@@ -164,28 +164,33 @@ export default function LoginSignUp() {
       btnGlow.stopAnimation();
       btnColor.stopAnimation();
 
-      Animated.sequence([
-        Animated.parallel([
-          Animated.spring(btnScale, { toValue: 0.95, useNativeDriver: true }),
-          Animated.timing(btnGlow, { toValue: 1, duration: 180, useNativeDriver: false }),
-        ]),
-        Animated.parallel([
-          Animated.spring(btnScale, { toValue: 1, friction: 4, tension: 120, useNativeDriver: true }),
-          Animated.timing(btnGlow, { toValue: 0, duration: 220, useNativeDriver: false }),
-        ]),
-      ]).start(() => {
-        try {
-          // Navigate after animation completes
-          logger.info('Navigation triggered', { mode, target: mode === 'signin' ? 'SwipeScreen' : 'Onboarding' });
-          if (mode === 'signin') {
-            navigation.replace('SwipeScreen');
-          } else {
-            navigation.replace('Onboarding');
-          }
-        } catch (navError) {
-          logger.error('Navigation error', { error: navError.toString(), stack: navError.stack, mode });
-        }
-      });
+      // Start animations separately to avoid mixing native/JS drivers
+      Animated.spring(btnScale, { toValue: 0.95, useNativeDriver: true }).start();
+      
+      setTimeout(() => {
+        Animated.timing(btnGlow, { toValue: 1, duration: 180, useNativeDriver: false }).start(() => {
+          // After glow reaches max, reverse it
+          Animated.timing(btnGlow, { toValue: 0, duration: 220, useNativeDriver: false }).start();
+        });
+        
+        // Scale back to 1
+        setTimeout(() => {
+          Animated.spring(btnScale, { toValue: 1, friction: 4, tension: 120, useNativeDriver: true }).start(() => {
+            // Animation complete callback
+            try {
+              // Navigate after animation completes
+              logger.info('Navigation triggered', { mode, target: mode === 'signin' ? 'SwipeScreen' : 'Onboarding' });
+              if (mode === 'signin') {
+                navigation.replace('SwipeScreen');
+              } else {
+                navigation.replace('Onboarding');
+              }
+            } catch (navError) {
+              logger.error('Navigation error', { error: navError.toString(), stack: navError.stack, mode });
+            }
+          });
+        }, 180);
+      }, 0);
     } catch (error) {
       logger.error('onContinue error', { error: error.toString(), stack: error.stack, mode });
     }
@@ -278,14 +283,15 @@ export default function LoginSignUp() {
                 btnColor.stopAnimation();
                 btnGlow.stopAnimation();
                 
-                // Small delay to ensure animations are fully stopped before starting new ones
+                // Start animations separately - cannot use parallel with mixed drivers
+                // Start native driver animation first
+                Animated.spring(btnScale, { toValue: 0.96, useNativeDriver: true }).start();
+                
+                // Start JS driver animation separately (for colors, must use JS driver)
+                // Small delay to ensure btnColor is not affected by native driver
                 setTimeout(() => {
-                  // Start animations - btnColor always uses JS driver (for colors)
-                  Animated.parallel([
-                    Animated.spring(btnScale, { toValue: 0.96, useNativeDriver: true }),
-                    Animated.timing(btnColor, { toValue: 1, duration: 220, useNativeDriver: false }),
-                  ]).start();
-                }, 0);
+                  Animated.timing(btnColor, { toValue: 1, duration: 220, useNativeDriver: false }).start();
+                }, 10);
               }}
               onPressOut={() => {
                 // Stop all animations first
@@ -293,16 +299,15 @@ export default function LoginSignUp() {
                 btnColor.stopAnimation();
                 btnGlow.stopAnimation();
                 
-                // Small delay to ensure animations are fully stopped
+                // Start animations separately
+                Animated.spring(btnScale, { toValue: 1, friction: 5, tension: 120, useNativeDriver: true }).start();
+                
+                // Start JS driver animation separately
                 setTimeout(() => {
-                  // Start animations
-                  Animated.parallel([
-                    Animated.spring(btnScale, { toValue: 1, friction: 5, tension: 120, useNativeDriver: true }),
-                    Animated.timing(btnColor, { toValue: 0, duration: 260, useNativeDriver: false }),
-                  ]).start();
-                  
-                  onContinue();
-                }, 0);
+                  Animated.timing(btnColor, { toValue: 0, duration: 260, useNativeDriver: false }).start();
+                }, 10);
+                
+                onContinue();
               }}
             >
               <Animated.View
