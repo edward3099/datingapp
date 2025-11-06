@@ -23,7 +23,7 @@ function NavButton({ type = 'swipe', active, focused, onPress }) {
   useEffect(() => {
     Animated.parallel([
       Animated.spring(scale, {
-        toValue: focused ? 0.9 : active ? 1.12 : 1,
+        toValue: focused ? 0.92 : active ? 1.08 : 1,
         friction: 5,
         tension: 100,
         useNativeDriver: true,
@@ -44,8 +44,8 @@ function NavButton({ type = 'swipe', active, focused, onPress }) {
     
     // Start animations separately to avoid mixing native/JS drivers
     Animated.parallel([
-      Animated.timing(lift, { toValue: -8, duration: 120, useNativeDriver: true }),
-      Animated.spring(scale, { toValue: 1.15, friction: 5, tension: 120, useNativeDriver: true }),
+      Animated.timing(lift, { toValue: -6, duration: 120, useNativeDriver: true }),
+      Animated.spring(scale, { toValue: 1.1, friction: 5, tension: 120, useNativeDriver: true }),
     ]).start();
     
     // Start JS driver animation separately
@@ -53,7 +53,7 @@ function NavButton({ type = 'swipe', active, focused, onPress }) {
       Animated.timing(glow, { toValue: 1, duration: 180, useNativeDriver: false }).start(() => {
         Animated.parallel([
           Animated.spring(lift, { toValue: 0, friction: 6, tension: 100, useNativeDriver: true }),
-          Animated.spring(scale, { toValue: 1.12, friction: 6, tension: 120, useNativeDriver: true }),
+          Animated.spring(scale, { toValue: 1.08, friction: 6, tension: 120, useNativeDriver: true }),
         ]).start();
         
         Animated.timing(glow, { toValue: 0, duration: 350, useNativeDriver: false }).start(() => {
@@ -67,9 +67,9 @@ function NavButton({ type = 'swipe', active, focused, onPress }) {
   const glowShadow = gradients[type][0] + '99';
 
   const renderIcon = () => {
-    if (type === 'messages') return <Feather name="send" size={26} color="#fff" />;
-    if (type === 'swipe') return <AntDesign name="heart" size={26} color="#fff" />;
-    return <AntDesign name="user" size={26} color="#fff" />;
+    if (type === 'messages') return <Feather name="send" size={20} color="#fff" />;
+    if (type === 'swipe') return <AntDesign name="heart" size={20} color="#fff" />;
+    return <AntDesign name="user" size={20} color="#fff" />;
   };
 
   return (
@@ -168,7 +168,7 @@ export default function TopNavBar() {
 const styles = StyleSheet.create({
   container: {
     position: 'absolute',
-    top: 50,
+    top: 10,
     left: 0,
     right: 0,
     alignItems: 'center',
@@ -177,33 +177,34 @@ const styles = StyleSheet.create({
   navWrap: {
     flexDirection: 'row',
     justifyContent: 'space-around',
-    width: width * 0.8,
-    paddingVertical: 8,
-    borderRadius: 36,
+    width: width * 0.7,
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    borderRadius: 24,
     backgroundColor: 'rgba(255,255,255,0.25)',
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: 'rgba(255,255,255,0.45)',
     shadowColor: '#5BC0F8',
     shadowOpacity: 0.25,
-    shadowRadius: 18,
-    shadowOffset: { width: 0, height: 8 },
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
     overflow: 'hidden',
   },
-  pressArea: { alignItems: 'center', justifyContent: 'center', marginHorizontal: 6 },
+  pressArea: { alignItems: 'center', justifyContent: 'center', marginHorizontal: 4 },
   button: {
-    width: 58,
-    height: 58,
-    borderRadius: 29,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     justifyContent: 'center',
     alignItems: 'center',
   },
   reflection: {
     position: 'absolute',
-    top: 5,
-    left: 5,
-    right: 5,
-    height: 10,
-    borderRadius: 8,
+    top: 3,
+    left: 3,
+    right: 3,
+    height: 8,
+    borderRadius: 6,
     backgroundColor: 'rgba(255,255,255,0.3)',
   },
 });
