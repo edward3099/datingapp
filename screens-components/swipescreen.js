@@ -21,7 +21,7 @@ const MAX_CARD_W = 420
 const SIDE_PADDING = 24
 const CARD_W = Math.min(SCREEN_W - SIDE_PADDING, MAX_CARD_W)
 const CARD_H = Math.max(560, Math.min(720, Math.round(CARD_W * 1.55)))
-const CARD_TOP_OFFSET = 100
+const CARD_TOP_OFFSET = 120
 
 const SWIPE_DISTANCE = 140
 const SWIPE_VELOCITY = 0.22
@@ -397,7 +397,7 @@ function SubtleSpark({ delay = 0 }) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#E8F6FF' },
-  deckContainer: { flex: 1, justifyContent: 'flex-start', alignItems: 'center', paddingHorizontal: SIDE_PADDING, paddingBottom: 80 },
+  deckContainer: { flex: 1, justifyContent: 'flex-start', alignItems: 'center', paddingHorizontal: SIDE_PADDING, paddingBottom: 30 },
   cardWrapper: { position: 'absolute', width: CARD_W, height: CARD_H },
   cardContainer: { width: '100%', height: '100%' },
   cardClip: {
