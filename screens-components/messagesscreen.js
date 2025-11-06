@@ -11,6 +11,7 @@ import {
   Easing,
 } from 'react-native'
 import { LinearGradient } from 'expo-linear-gradient'
+import { useNavigation } from '@react-navigation/native'
 import TopNavBar from '../components/TopNavBar'
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window')
@@ -38,10 +39,9 @@ const initialMessages = [
 ]
 
 export default function MessagesScreen() {
+  const navigation = useNavigation()
   const headerAnim = useRef(new Animated.Value(0)).current
-  const [selectedChat, setSelectedChat] = useState(null)
   const [messages, setMessages] = useState(initialMessages)
-  const chatAnim = useRef(new Animated.Value(0)).current
 
   useEffect(() => {
     Animated.timing(headerAnim, {
@@ -57,36 +57,18 @@ export default function MessagesScreen() {
   })
 
   const openChat = (item) => {
-    setSelectedChat(item.name)
+    // Mark message as read
     setMessages((prev) =>
       prev.map((msg) =>
         msg.id === item.id ? { ...msg, read: true } : msg
       )
     )
-    Animated.timing(chatAnim, {
-      toValue: 1,
-      duration: 450,
-      useNativeDriver: true,
-    }).start()
+    // Navigate to ChatsScreen with chat data
+    navigation.navigate('Chats', { 
+      chatName: item.name,
+      chatImage: item.image 
+    })
   }
-
-  const closeChat = () => {
-    Animated.timing(chatAnim, {
-      toValue: 0,
-      duration: 350,
-      useNativeDriver: true,
-    }).start(() => setSelectedChat(null))
-  }
-
-  const chatTranslate = chatAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: [SCREEN_H, 0],
-  })
-
-  const chatScale = chatAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0.95, 1],
-  })
 
   const combinedData = [
     { type: 'header' },
@@ -176,32 +158,6 @@ export default function MessagesScreen() {
           return null
         }}
       />
-
-      {selectedChat && (
-        <Animated.View
-          style={[
-            styles.chatContainer,
-            {
-              transform: [{ translateY: chatTranslate }, { scale: chatScale }],
-              opacity: chatAnim,
-            },
-          ]}
-        >
-          <View style={styles.chatHeader}>
-            <TouchableWithoutFeedback onPress={closeChat}>
-              <View>
-                <Text style={styles.back}>‹</Text>
-              </View>
-            </TouchableWithoutFeedback>
-            <Text style={styles.chatName}>{selectedChat}</Text>
-          </View>
-          <View style={styles.chatBody}>
-            <Text style={styles.chatPlaceholder}>
-              chat with {selectedChat} will appear here...
-            </Text>
-          </View>
-        </Animated.View>
-      )}
     </LinearGradient>
   )
 }
@@ -332,26 +288,4 @@ const styles = StyleSheet.create({
   messageRead: { fontSize: 14, color: '#6C8BA4', marginTop: 2 },
   timeStrong: { fontSize: 12, color: '#0277BD', fontWeight: '600' },
   timeRead: { fontSize: 12, color: '#9CB8CC' },
-  chatContainer: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: '#F8FCFF',
-    borderTopLeftRadius: 28,
-    borderTopRightRadius: 28,
-  },
-  chatHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 20,
-    paddingTop: 70,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: '#CFE9F9',
-  },
-  back: { fontSize: 34, color: '#007AFF', marginRight: 10 },
-  chatName: { fontSize: 22, fontWeight: '800', color: '#063970' },
-  chatBody: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  chatPlaceholder: { color: '#8EA1B8', fontSize: 16 },
 })

@@ -13,11 +13,16 @@ import {
   Dimensions,
 } from 'react-native'
 import { LinearGradient } from 'expo-linear-gradient'
+import { useRoute } from '@react-navigation/native'
 import TopNavBar from '../components/TopNavBar'
 
 const { width: SCREEN_W } = Dimensions.get('window')
 
 export default function ChatsScreen() {
+  const route = useRoute()
+  const chatName = route.params?.chatName || 'Amara'
+  const chatImage = route.params?.chatImage || 'https://picsum.photos/200/200?random'
+  
   const [messages, setMessages] = useState(
     Array.from({ length: 20 }).map((_, i) => ({
       id: i.toString(),
@@ -119,8 +124,8 @@ export default function ChatsScreen() {
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1, paddingTop: 110 }}>
         <View style={styles.header}>
           <View style={styles.headerInfo}>
-            <Image source={{ uri: 'https://picsum.photos/200/200?random' }} style={styles.headerAvatar} />
-            <Text style={styles.headerName}>Amara</Text>
+            <Image source={{ uri: chatImage }} style={styles.headerAvatar} />
+            <Text style={styles.headerName}>{chatName}</Text>
           </View>
         </View>
 
@@ -138,7 +143,7 @@ export default function ChatsScreen() {
                 { opacity: typingOpacity, transform: [{ translateY: typingTranslate }] },
               ]}
             >
-              <Text style={styles.typingText}>Amara is typing...</Text>
+              <Text style={styles.typingText}>{chatName} is typing...</Text>
             </Animated.View>
           }
         />
