@@ -6,15 +6,12 @@ import {
   FlatList,
   Animated,
   Image,
-  Dimensions,
   TouchableWithoutFeedback,
   Easing,
 } from 'react-native'
 import { LinearGradient } from 'expo-linear-gradient'
 import { useNavigation } from '@react-navigation/native'
 import TopNavBar from '../components/TopNavBar'
-
-const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window')
 
 const matches = [
   { id: '1', name: 'Amara', image: 'https://picsum.photos/200/200?1' },
@@ -57,7 +54,7 @@ export default function MessagesScreen() {
   })
 
   const openChat = (item) => {
-    // Mark message as read
+    // Mark message as read if it exists in messages
     setMessages((prev) =>
       prev.map((msg) =>
         msg.id === item.id ? { ...msg, read: true } : msg
