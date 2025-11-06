@@ -96,8 +96,6 @@ export default function LoginSignUp() {
   const panelLift = useRef(new Animated.Value(20)).current;
   const panelScale = useRef(new Animated.Value(0.98)).current;
   const btnScale = useRef(new Animated.Value(1)).current;
-  const btnColor = useRef(new Animated.Value(0)).current;
-  const btnGlow = useRef(new Animated.Value(0)).current;
   const [btnPressed, setBtnPressed] = useState(false);
 
   const passErrorGlow = useRef(new Animated.Value(0)).current;
@@ -114,10 +112,8 @@ export default function LoginSignUp() {
   // Use state-based color instead of animated to avoid native/JS driver conflicts
   const bgBtnColor = btnPressed ? '#FF4C4C' : '#007AFF';
 
-  const glowOpacity = btnGlow.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0.2, 0.55],
-  });
+  // Use static shadow opacity to avoid native/JS driver conflicts
+  const glowOpacity = 0.2;
 
   const passBorderColor = passErrorGlow.interpolate({
     inputRange: [0, 1],
@@ -160,35 +156,25 @@ export default function LoginSignUp() {
 
       // Stop any running animations first
       btnScale.stopAnimation();
-      btnGlow.stopAnimation();
 
-      // Start animations separately to avoid mixing native/JS drivers
-      Animated.spring(btnScale, { toValue: 0.95, useNativeDriver: true }).start();
-      
-      setTimeout(() => {
-        Animated.timing(btnGlow, { toValue: 1, duration: 180, useNativeDriver: false }).start(() => {
-          // After glow reaches max, reverse it
-          Animated.timing(btnGlow, { toValue: 0, duration: 220, useNativeDriver: false }).start();
-        });
-        
-        // Scale back to 1
-        setTimeout(() => {
-          Animated.spring(btnScale, { toValue: 1, friction: 4, tension: 120, useNativeDriver: true }).start(() => {
-            // Animation complete callback
-            try {
-              // Navigate after animation completes
-              logger.info('Navigation triggered', { mode, target: mode === 'signin' ? 'SwipeScreen' : 'Onboarding' });
-              if (mode === 'signin') {
-                navigation.replace('SwipeScreen');
-              } else {
-                navigation.replace('Onboarding');
-              }
-            } catch (navError) {
-              logger.error('Navigation error', { error: navError.toString(), stack: navError.stack, mode });
-            }
-          });
-        }, 180);
-      }, 0);
+      // Start animation with native driver only
+      Animated.sequence([
+        Animated.spring(btnScale, { toValue: 0.95, useNativeDriver: true }),
+        Animated.spring(btnScale, { toValue: 1, friction: 4, tension: 120, useNativeDriver: true }),
+      ]).start(() => {
+        // Animation complete callback
+        try {
+          // Navigate after animation completes
+          logger.info('Navigation triggered', { mode, target: mode === 'signin' ? 'SwipeScreen' : 'Onboarding' });
+          if (mode === 'signin') {
+            navigation.replace('SwipeScreen');
+          } else {
+            navigation.replace('Onboarding');
+          }
+        } catch (navError) {
+          logger.error('Navigation error', { error: navError.toString(), stack: navError.stack, mode });
+        }
+      });
     } catch (error) {
       logger.error('onContinue error', { error: error.toString(), stack: error.stack, mode });
     }
@@ -278,7 +264,6 @@ export default function LoginSignUp() {
               onPressIn={() => {
                 // Stop all animations first
                 btnScale.stopAnimation();
-                btnGlow.stopAnimation();
                 
                 // Use state for color change to avoid native/JS driver conflicts
                 setBtnPressed(true);
@@ -289,7 +274,6 @@ export default function LoginSignUp() {
               onPressOut={() => {
                 // Stop all animations first
                 btnScale.stopAnimation();
-                btnGlow.stopAnimation();
                 
                 // Reset color state
                 setBtnPressed(false);
