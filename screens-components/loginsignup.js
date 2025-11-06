@@ -13,6 +13,7 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useNavigation } from '@react-navigation/native';
+import { logger } from '../utils/logger';
 
 const { width, height } = Dimensions.get('window');
 
@@ -151,33 +152,43 @@ export default function LoginSignUp() {
   };
 
   const onContinue = () => {
-    if (mode === 'signup' && password !== retype) {
-      flashError();
-      return;
-    }
-
-    // Stop any running animations first
-    btnScale.stopAnimation();
-    btnGlow.stopAnimation();
-    btnColor.stopAnimation();
-
-    Animated.sequence([
-      Animated.parallel([
-        Animated.spring(btnScale, { toValue: 0.95, useNativeDriver: true }),
-        Animated.timing(btnGlow, { toValue: 1, duration: 180, useNativeDriver: false }),
-      ]),
-      Animated.parallel([
-        Animated.spring(btnScale, { toValue: 1, friction: 4, tension: 120, useNativeDriver: true }),
-        Animated.timing(btnGlow, { toValue: 0, duration: 220, useNativeDriver: false }),
-      ]),
-    ]).start(() => {
-      // Navigate after animation completes
-      if (mode === 'signin') {
-        navigation.replace('SwipeScreen');
-      } else {
-        navigation.replace('Onboarding');
+    try {
+      if (mode === 'signup' && password !== retype) {
+        flashError();
+        logger.warn('Password mismatch', { mode, passwordLength: password.length });
+        return;
       }
-    });
+
+      // Stop any running animations first
+      btnScale.stopAnimation();
+      btnGlow.stopAnimation();
+      btnColor.stopAnimation();
+
+      Animated.sequence([
+        Animated.parallel([
+          Animated.spring(btnScale, { toValue: 0.95, useNativeDriver: true }),
+          Animated.timing(btnGlow, { toValue: 1, duration: 180, useNativeDriver: false }),
+        ]),
+        Animated.parallel([
+          Animated.spring(btnScale, { toValue: 1, friction: 4, tension: 120, useNativeDriver: true }),
+          Animated.timing(btnGlow, { toValue: 0, duration: 220, useNativeDriver: false }),
+        ]),
+      ]).start(() => {
+        try {
+          // Navigate after animation completes
+          logger.info('Navigation triggered', { mode, target: mode === 'signin' ? 'SwipeScreen' : 'Onboarding' });
+          if (mode === 'signin') {
+            navigation.replace('SwipeScreen');
+          } else {
+            navigation.replace('Onboarding');
+          }
+        } catch (navError) {
+          logger.error('Navigation error', { error: navError.toString(), stack: navError.stack, mode });
+        }
+      });
+    } catch (error) {
+      logger.error('onContinue error', { error: error.toString(), stack: error.stack, mode });
+    }
   };
 
   const toggleMode = () => setMode((m) => (m === 'signin' ? 'signup' : 'signin'));

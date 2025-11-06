@@ -11,6 +11,7 @@ import UserProfileScreen from '../screens-components/userprofilescreenwithedits'
 import ViewProfileScreen from '../screens-components/viewingotherusersprofilescreen';
 import ChatsScreen from '../screens-components/chatscreen';
 import MessagesScreen from '../screens-components/messagesscreen';
+import DebugScreen from '../components/DebugScreen';
 
 const Stack = createNativeStackNavigator();
 
@@ -33,6 +34,11 @@ export default function AppNavigator() {
         <Stack.Screen name="ViewProfile" component={ViewProfileScreen} />
         <Stack.Screen name="Chats" component={ChatsScreen} />
         <Stack.Screen name="Messages" component={MessagesScreen} />
+        <Stack.Screen 
+          name="Debug" 
+          component={DebugScreen}
+          options={{ headerShown: true, title: 'Debug Console' }}
+        />
       </Stack.Navigator>
     </NavigationContainer>
   );
