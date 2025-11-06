@@ -99,8 +99,8 @@ export default function TopNavBar() {
   const getCurrentScreen = () => {
     const routeName = route.name;
     if (routeName === 'SwipeScreen') return 'swipe';
-    if (routeName === 'Messages' || routeName === 'Chats') return 'messages';
-    if (routeName === 'UserProfile' || routeName === 'ViewProfile') return 'profile';
+    if (routeName === 'Messages') return 'messages';
+    if (routeName === 'UserProfile') return 'profile';
     return 'swipe'; // default
   };
 
@@ -117,7 +117,7 @@ export default function TopNavBar() {
     if (type === 'swipe' && current !== 'swipe') {
       navigation.navigate('SwipeScreen');
     } else if (type === 'messages' && current !== 'messages') {
-      navigation.navigate('Chats');
+      navigation.navigate('Messages');
     } else if (type === 'profile' && current !== 'profile') {
       navigation.navigate('UserProfile');
     }
