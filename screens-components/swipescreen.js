@@ -147,55 +147,58 @@ export default function SwipeScreen() {
     })
   }
 
-  const tapTimeoutRef = useRef(null)
-  const panStartRef = useRef({ x: 0, y: 0 })
+  const panStartTime = useRef(0)
+  const hasMoved = useRef(false)
 
   const panResponder = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: () => {
         isSwiping.current = false
-        panStartRef.current = { x: pan.x._value || 0, y: pan.y._value || 0 }
-        // Set a timeout to detect taps (if no movement after 150ms, it's a tap)
-        tapTimeoutRef.current = setTimeout(() => {
-          if (!isSwiping.current && !isAnimating.current) {
-            const currentProfile = visible[0]
-            if (currentProfile) {
-              navigation.navigate('ViewProfile', { profile: currentProfile })
-            }
-          }
-        }, 150)
+        hasMoved.current = false
+        panStartTime.current = Date.now()
         return !isAnimating.current
       },
       onMoveShouldSetPanResponder: (evt, g) => {
-        if (!isAnimating.current && (Math.abs(g.dx) > 6 || Math.abs(g.dy) > 6)) {
+        if (!isAnimating.current && (Math.abs(g.dx) > 5 || Math.abs(g.dy) > 5)) {
+          hasMoved.current = true
           isSwiping.current = true
-          if (tapTimeoutRef.current) {
-            clearTimeout(tapTimeoutRef.current)
-            tapTimeoutRef.current = null
-          }
           return true
         }
         return false
       },
       onPanResponderMove: (evt, gesture) => {
         if (isAnimating.current) return
+        hasMoved.current = true
         isSwiping.current = true
-        if (tapTimeoutRef.current) {
-          clearTimeout(tapTimeoutRef.current)
-          tapTimeoutRef.current = null
-        }
         Animated.event([null, { dx: pan.x, dy: pan.y }], { useNativeDriver: false })(evt, gesture)
       },
       onPanResponderRelease: (e, g) => {
-        if (tapTimeoutRef.current) {
-          clearTimeout(tapTimeoutRef.current)
-          tapTimeoutRef.current = null
-        }
         if (isAnimating.current) return
+        
+        const moveDistance = Math.sqrt(g.dx * g.dx + g.dy * g.dy)
+        const timeElapsed = Date.now() - panStartTime.current
+        
+        // Detect tap: very small movement, short duration, and no significant movement detected
+        const wasTap = moveDistance < 8 && timeElapsed < 250 && !hasMoved.current
+        
+        if (wasTap) {
+          // It was a tap, navigate to profile
+          const currentProfile = visible[0]
+          if (currentProfile) {
+            navigation.navigate('ViewProfile', { profile: currentProfile })
+          }
+          // Reset pan position
+          pan.x.setValue(0)
+          pan.y.setValue(0)
+          return
+        }
+        
+        // Check if it was a swipe
         const intent = Math.abs(g.dx) > SWIPE_DISTANCE || (Math.abs(g.vx) > SWIPE_VELOCITY && Math.abs(g.dx) > 60)
         if (intent) {
           commitSwipe(g.dx > 0 ? 'like' : 'dislike')
         } else {
+          // Small movement, spring back
           Animated.spring(pan, { toValue: { x: 0, y: 0 }, useNativeDriver: true, speed: 16, bounciness: 7 }).start(() => {
             isSwiping.current = false
           })
