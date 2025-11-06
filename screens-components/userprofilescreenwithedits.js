@@ -89,7 +89,7 @@ export default function UserProfileScreen() {
       <LinearGradient colors={['#E8F6FF', '#FFFFFF']} style={StyleSheet.absoluteFill} />
       <TopNavBar />
 
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ alignItems: 'center', paddingTop: 110, paddingBottom: 120 }}>
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ alignItems: 'center', paddingTop: 70, paddingBottom: 120 }}>
         {/* CARD */}
         <View style={styles.cardContainer}>
           <TouchableWithoutFeedback
