@@ -121,7 +121,7 @@ export default function TopNavBar() {
     if (routeName === 'SwipeScreen') return 'swipe';
     if (routeName === 'Messages') return 'messages';
     if (routeName === 'UserProfile') return 'profile';
-    return 'swipe'; // default
+    return null; // For other screens like ViewProfile, return null to allow navigation
   };
 
   const current = getCurrentScreen();
@@ -134,11 +134,12 @@ export default function TopNavBar() {
   }, []);
 
   const handleNavPress = (type) => {
-    if (type === 'swipe' && current !== 'swipe') {
+    // Always navigate when clicking a button, especially from screens like ViewProfile
+    if (type === 'swipe') {
       navigation.navigate('SwipeScreen');
-    } else if (type === 'messages' && current !== 'messages') {
+    } else if (type === 'messages') {
       navigation.navigate('Messages');
-    } else if (type === 'profile' && current !== 'profile') {
+    } else if (type === 'profile') {
       navigation.navigate('UserProfile');
     }
   };
