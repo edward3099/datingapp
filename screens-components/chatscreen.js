@@ -13,6 +13,7 @@ import {
   Dimensions,
 } from 'react-native'
 import { LinearGradient } from 'expo-linear-gradient'
+import TopNavBar from '../components/TopNavBar'
 
 const { width: SCREEN_W } = Dimensions.get('window')
 
@@ -103,6 +104,7 @@ export default function ChatsScreen() {
         start={{ x: 0.1, y: 0 }}
         end={{ x: 1, y: 1 }}
       />
+      <TopNavBar />
 
       <Animated.View
         style={[

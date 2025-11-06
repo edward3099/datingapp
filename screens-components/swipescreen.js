@@ -13,6 +13,7 @@ import {
 import { LinearGradient } from 'expo-linear-gradient'
 import { BlurView } from 'expo-blur'
 import { AntDesign } from '@expo/vector-icons'
+import TopNavBar from '../components/TopNavBar'
 
 const { width: SCREEN_W } = Dimensions.get('window')
 
@@ -182,6 +183,7 @@ export default function SwipeScreen() {
   return (
     <View style={styles.container}>
       <LinearGradient colors={['#E8F6FF', '#F3FAFF']} style={StyleSheet.absoluteFill} />
+      <TopNavBar />
 
       <View style={styles.deckContainer} pointerEvents="box-none">
         {visible.length > 0 ? (

@@ -12,6 +12,7 @@ import {
 } from 'react-native'
 import { LinearGradient } from 'expo-linear-gradient'
 import { AntDesign } from '@expo/vector-icons'
+import TopNavBar from '../components/TopNavBar'
 
 const { width: SCREEN_W } = Dimensions.get('window')
 const CARD_W = SCREEN_W * 0.94
@@ -168,6 +169,7 @@ export default function ViewProfileScreen() {
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
       />
+      <TopNavBar />
 
       <Animated.ScrollView
         showsVerticalScrollIndicator={false}

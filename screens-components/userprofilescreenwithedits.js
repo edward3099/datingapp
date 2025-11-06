@@ -19,6 +19,7 @@ import { AntDesign } from '@expo/vector-icons'
 import { useNavigation } from '@react-navigation/native'
 import DraggableFlatList, { ScaleDecorator } from 'react-native-draggable-flatlist'
 import * as ImagePicker from 'expo-image-picker'
+import TopNavBar from '../components/TopNavBar'
 
 const { width: SCREEN_W } = Dimensions.get('window')
 const CARD_W = SCREEN_W * 0.94
@@ -86,6 +87,7 @@ export default function UserProfileScreen() {
   return (
     <View style={styles.container}>
       <LinearGradient colors={['#E8F6FF', '#FFFFFF']} style={StyleSheet.absoluteFill} />
+      <TopNavBar />
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ alignItems: 'center', paddingBottom: 120 }}>
         {/* CARD */}

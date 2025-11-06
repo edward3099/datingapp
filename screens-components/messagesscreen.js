@@ -11,6 +11,7 @@ import {
   Easing,
 } from 'react-native'
 import { LinearGradient } from 'expo-linear-gradient'
+import TopNavBar from '../components/TopNavBar'
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window')
 
@@ -95,6 +96,7 @@ export default function MessagesScreen() {
 
   return (
     <LinearGradient colors={['#E8F6FF', '#F3FAFF']} style={styles.container}>
+      <TopNavBar />
       <FlatList
         data={combinedData}
         keyExtractor={(item, index) => `${item.type}-${index}`}
