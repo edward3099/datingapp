@@ -9,10 +9,12 @@ import {
   PanResponder,
   Animated,
   Easing,
+  TouchableWithoutFeedback,
 } from 'react-native'
 import { LinearGradient } from 'expo-linear-gradient'
 import { BlurView } from 'expo-blur'
 import { AntDesign } from '@expo/vector-icons'
+import { useNavigation } from '@react-navigation/native'
 import TopNavBar from '../components/TopNavBar'
 
 const { width: SCREEN_W } = Dimensions.get('window')
@@ -50,11 +52,13 @@ const initialDeck = [
 ]
 
 export default function SwipeScreen() {
+  const navigation = useNavigation()
   const [deck, setDeck] = useState(initialDeck)
   const visible = useMemo(() => deck.slice(0, 3), [deck])
 
   const pan = useRef(new Animated.ValueXY()).current
   const isAnimating = useRef(false)
+  const isSwiping = useRef(false)
 
   const likeScaleFromPan = pan.x.interpolate({
     inputRange: [-SCREEN_W / 2, 0, SCREEN_W / 2],
@@ -143,23 +147,70 @@ export default function SwipeScreen() {
     })
   }
 
+  const tapTimeoutRef = useRef(null)
+  const panStartRef = useRef({ x: 0, y: 0 })
+
   const panResponder = useRef(
     PanResponder.create({
-      onStartShouldSetPanResponder: () => !isAnimating.current,
-      onMoveShouldSetPanResponder: (evt, g) => !isAnimating.current && (Math.abs(g.dx) > 6 || Math.abs(g.dy) > 6),
+      onStartShouldSetPanResponder: () => {
+        isSwiping.current = false
+        panStartRef.current = { x: pan.x._value || 0, y: pan.y._value || 0 }
+        // Set a timeout to detect taps (if no movement after 150ms, it's a tap)
+        tapTimeoutRef.current = setTimeout(() => {
+          if (!isSwiping.current && !isAnimating.current) {
+            const currentProfile = visible[0]
+            if (currentProfile) {
+              navigation.navigate('ViewProfile', { profile: currentProfile })
+            }
+          }
+        }, 150)
+        return !isAnimating.current
+      },
+      onMoveShouldSetPanResponder: (evt, g) => {
+        if (!isAnimating.current && (Math.abs(g.dx) > 6 || Math.abs(g.dy) > 6)) {
+          isSwiping.current = true
+          if (tapTimeoutRef.current) {
+            clearTimeout(tapTimeoutRef.current)
+            tapTimeoutRef.current = null
+          }
+          return true
+        }
+        return false
+      },
       onPanResponderMove: (evt, gesture) => {
         if (isAnimating.current) return
+        isSwiping.current = true
+        if (tapTimeoutRef.current) {
+          clearTimeout(tapTimeoutRef.current)
+          tapTimeoutRef.current = null
+        }
         Animated.event([null, { dx: pan.x, dy: pan.y }], { useNativeDriver: false })(evt, gesture)
       },
       onPanResponderRelease: (e, g) => {
+        if (tapTimeoutRef.current) {
+          clearTimeout(tapTimeoutRef.current)
+          tapTimeoutRef.current = null
+        }
         if (isAnimating.current) return
         const intent = Math.abs(g.dx) > SWIPE_DISTANCE || (Math.abs(g.vx) > SWIPE_VELOCITY && Math.abs(g.dx) > 60)
-        if (intent) commitSwipe(g.dx > 0 ? 'like' : 'dislike')
-        else Animated.spring(pan, { toValue: { x: 0, y: 0 }, useNativeDriver: true, speed: 16, bounciness: 7 }).start()
+        if (intent) {
+          commitSwipe(g.dx > 0 ? 'like' : 'dislike')
+        } else {
+          Animated.spring(pan, { toValue: { x: 0, y: 0 }, useNativeDriver: true, speed: 16, bounciness: 7 }).start(() => {
+            isSwiping.current = false
+          })
+        }
       },
       onPanResponderTerminationRequest: () => false,
     })
   ).current
+
+  const handleCardPress = (profile, isTop) => {
+    // Non-top cards can always be tapped
+    if (!isTop && !isAnimating.current) {
+      navigation.navigate('ViewProfile', { profile })
+    }
+  }
 
   const rotateZ = pan.x.interpolate({
     inputRange: [-SCREEN_W / 2, 0, SCREEN_W / 2],
@@ -196,16 +247,24 @@ export default function SwipeScreen() {
             const rotZ = isTop ? '0deg' : `${(i - 1) * 2.2 - 1.6}deg`
             return (
               <View key={profile.id} style={{ ...styles.cardWrapper, zIndex, top: CARD_TOP_OFFSET }} pointerEvents="box-none">
-                <Animated.View
-                  {...(isTop ? panResponder.panHandlers : {})}
-                  style={
-                    isTop
-                      ? { ...styles.cardContainer, transform: [{ translateX: pan.x }, { translateY: pan.y }, { rotateZ }, { perspective: 1000 }, { rotateX: tiltX }, { rotateY: tiltY }] }
-                      : { ...styles.cardContainer, transform: [{ translateY }, { translateX }, { scale }, { rotate: rotZ }] }
-                  }
-                >
-                  <Card profile={profile} isTop={isTop} pan={isTop ? pan : null} />
-                </Animated.View>
+                {!isTop ? (
+                  <Pressable onPress={() => handleCardPress(profile, isTop)}>
+                    <Animated.View
+                      style={{ ...styles.cardContainer, transform: [{ translateY }, { translateX }, { scale }, { rotate: rotZ }] }}
+                    >
+                      <Card profile={profile} isTop={isTop} pan={null} />
+                    </Animated.View>
+                  </Pressable>
+                ) : (
+                  <Animated.View
+                    {...panResponder.panHandlers}
+                    style={
+                      { ...styles.cardContainer, transform: [{ translateX: pan.x }, { translateY: pan.y }, { rotateZ }, { perspective: 1000 }, { rotateX: tiltX }, { rotateY: tiltY }] }
+                    }
+                  >
+                    <Card profile={profile} isTop={isTop} pan={pan} />
+                  </Animated.View>
+                )}
               </View>
             )
           })

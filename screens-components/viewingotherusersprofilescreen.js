@@ -12,6 +12,7 @@ import {
 } from 'react-native'
 import { LinearGradient } from 'expo-linear-gradient'
 import { AntDesign } from '@expo/vector-icons'
+import { useRoute } from '@react-navigation/native'
 import TopNavBar from '../components/TopNavBar'
 
 const { width: SCREEN_W } = Dimensions.get('window')
@@ -19,6 +20,9 @@ const CARD_W = SCREEN_W * 0.94
 const CARD_H = CARD_W * 1.35
 
 export default function ViewProfileScreen() {
+  const route = useRoute()
+  const profile = route.params?.profile || { id: '1', name: 'Profile', age: 25, imageUri: 'https://picsum.photos/1000/1200', tags: [] }
+  
   const likeScale = useRef(new Animated.Value(1)).current
   const dislikeScale = useRef(new Animated.Value(1)).current
   const [liked, setLiked] = useState(false)
@@ -176,7 +180,7 @@ export default function ViewProfileScreen() {
         contentContainerStyle={{ alignItems: 'center', paddingTop: 110, paddingBottom: 180 }}
       >
         <Animated.View style={[styles.heroContainer, { transform: [{ translateX: cardShake }] }]}>
-          <Image source={{ uri: 'https://picsum.photos/1000/1200' }} style={styles.heroImage} />
+          <Image source={typeof profile.imageUri === 'number' ? profile.imageUri : { uri: profile.imageUri }} style={styles.heroImage} />
           <LinearGradient colors={['transparent', 'rgba(255,255,255,0.9)']} style={styles.heroFade} />
 
           {liked && (
@@ -211,9 +215,9 @@ export default function ViewProfileScreen() {
         </Animated.View>
 
         <View style={styles.content}>
-          <Text style={styles.name}>Amara, 24</Text>
+          <Text style={styles.name}>{profile.name}, {profile.age}</Text>
           <Text style={styles.bio}>
-            designer & poet. lover of soft colours, old bookstores, and rainy mornings.
+            {profile.tags && profile.tags.length > 0 ? profile.tags.join(' • ') : 'No bio available'}
           </Text>
 
           <View style={styles.metricsContainer}>
