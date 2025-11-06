@@ -98,6 +98,7 @@ export default function LoginSignUp() {
   const btnScale = useRef(new Animated.Value(1)).current;
   const btnColor = useRef(new Animated.Value(0)).current;
   const btnGlow = useRef(new Animated.Value(0)).current;
+  const [btnPressed, setBtnPressed] = useState(false);
 
   const passErrorGlow = useRef(new Animated.Value(0)).current;
   const retypeErrorGlow = useRef(new Animated.Value(0)).current;
@@ -110,10 +111,8 @@ export default function LoginSignUp() {
     ]).start();
   }, []);
 
-  const bgBtnColor = btnColor.interpolate({
-    inputRange: [0, 1],
-    outputRange: ['#007AFF', '#FF4C4C'],
-  });
+  // Use state-based color instead of animated to avoid native/JS driver conflicts
+  const bgBtnColor = btnPressed ? '#FF4C4C' : '#007AFF';
 
   const glowOpacity = btnGlow.interpolate({
     inputRange: [0, 1],
@@ -162,7 +161,6 @@ export default function LoginSignUp() {
       // Stop any running animations first
       btnScale.stopAnimation();
       btnGlow.stopAnimation();
-      btnColor.stopAnimation();
 
       // Start animations separately to avoid mixing native/JS drivers
       Animated.spring(btnScale, { toValue: 0.95, useNativeDriver: true }).start();
@@ -280,32 +278,24 @@ export default function LoginSignUp() {
               onPressIn={() => {
                 // Stop all animations first
                 btnScale.stopAnimation();
-                btnColor.stopAnimation();
                 btnGlow.stopAnimation();
                 
-                // Start animations separately - cannot use parallel with mixed drivers
-                // Start native driver animation first
-                Animated.spring(btnScale, { toValue: 0.96, useNativeDriver: true }).start();
+                // Use state for color change to avoid native/JS driver conflicts
+                setBtnPressed(true);
                 
-                // Start JS driver animation separately (for colors, must use JS driver)
-                // Small delay to ensure btnColor is not affected by native driver
-                setTimeout(() => {
-                  Animated.timing(btnColor, { toValue: 1, duration: 220, useNativeDriver: false }).start();
-                }, 10);
+                // Start native driver animation
+                Animated.spring(btnScale, { toValue: 0.96, useNativeDriver: true }).start();
               }}
               onPressOut={() => {
                 // Stop all animations first
                 btnScale.stopAnimation();
-                btnColor.stopAnimation();
                 btnGlow.stopAnimation();
                 
-                // Start animations separately
-                Animated.spring(btnScale, { toValue: 1, friction: 5, tension: 120, useNativeDriver: true }).start();
+                // Reset color state
+                setBtnPressed(false);
                 
-                // Start JS driver animation separately
-                setTimeout(() => {
-                  Animated.timing(btnColor, { toValue: 0, duration: 260, useNativeDriver: false }).start();
-                }, 10);
+                // Start native driver animation
+                Animated.spring(btnScale, { toValue: 1, friction: 5, tension: 120, useNativeDriver: true }).start();
                 
                 onContinue();
               }}
