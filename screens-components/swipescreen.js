@@ -21,7 +21,7 @@ const MAX_CARD_W = 420
 const SIDE_PADDING = 24
 const CARD_W = Math.min(SCREEN_W - SIDE_PADDING, MAX_CARD_W)
 const CARD_H = Math.max(560, Math.min(720, Math.round(CARD_W * 1.55)))
-const CARD_TOP_OFFSET = 40
+const CARD_TOP_OFFSET = 20
 
 const SWIPE_DISTANCE = 140
 const SWIPE_VELOCITY = 0.22
@@ -397,7 +397,7 @@ function SubtleSpark({ delay = 0 }) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#E8F6FF' },
-  deckContainer: { flex: 1, justifyContent: 'flex-start', alignItems: 'center', paddingHorizontal: SIDE_PADDING, paddingBottom: 180 },
+  deckContainer: { flex: 1, justifyContent: 'flex-start', alignItems: 'center', paddingHorizontal: SIDE_PADDING, paddingBottom: 120 },
   cardWrapper: { position: 'absolute', width: CARD_W, height: CARD_H },
   cardContainer: { width: '100%', height: '100%' },
   cardClip: {
@@ -427,6 +427,6 @@ const styles = StyleSheet.create({
   metricBar: { height: 6, backgroundColor: 'rgba(255,255,255,0.25)', borderRadius: 6 },
   metricBarFill: { height: 6, borderRadius: 6 },
   emptyText: { fontSize: 22, color: '#777' },
-  actionBar: { position: 'absolute', left: 0, right: 0, bottom: 42, paddingHorizontal: 40, flexDirection: 'row', justifyContent: 'space-around', zIndex: 2000 },
+  actionBar: { position: 'absolute', left: 0, right: 0, bottom: 20, paddingHorizontal: 40, flexDirection: 'row', justifyContent: 'space-around', zIndex: 2000 },
   actionButtonLarge: { width: 90, height: 90, borderRadius: 45, justifyContent: 'center', alignItems: 'center' },
 });
