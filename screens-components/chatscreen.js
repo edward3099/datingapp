@@ -16,7 +16,7 @@ import { LinearGradient } from 'expo-linear-gradient'
 
 const { width: SCREEN_W } = Dimensions.get('window')
 
-export default function MessagesScreen() {
+export default function ChatsScreen() {
   const [messages, setMessages] = useState(
     Array.from({ length: 20 }).map((_, i) => ({
       id: i.toString(),

@@ -28,7 +28,7 @@ const TAG_OPTIONS = [
   'movies','pets','fashion','photography','nature','dance','yoga','coffee',
 ]
 
-export default function ProfileScreen() {
+export default function UserProfileScreen() {
   const [photos, setPhotos] = useState(
     Array.from({ length: 10 }).map((_, i) => ({
       id: i.toString(),

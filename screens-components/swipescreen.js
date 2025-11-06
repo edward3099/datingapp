@@ -48,7 +48,7 @@ const initialDeck = [
   { id: '5', name: 'kai', age: 23, imageUri: 'https://picsum.photos/800/1000?5', tags: ['art', 'skate'] },
 ]
 
-export default function App() {
+export default function SwipeScreen() {
   const [deck, setDeck] = useState(initialDeck)
   const visible = useMemo(() => deck.slice(0, 3), [deck])
 
@@ -290,11 +290,17 @@ function Card({ profile, isTop, pan }) {
       {isTop && (
         <>
           <Animated.View pointerEvents="none" style={{ position: 'absolute', top: 24, left: 18, opacity: likeOpacity }}>
-            <Image source={require('./assets/angel.png')} style={{ width: 100, height: 100 }} resizeMode="contain" />
+            {/* <Image source={require('../assets/angel.png')} style={{ width: 100, height: 100 }} resizeMode="contain" /> */}
+            <View style={{ width: 100, height: 100, backgroundColor: 'rgba(255,255,255,0.9)', borderRadius: 50, justifyContent: 'center', alignItems: 'center' }}>
+              <AntDesign name="heart" size={50} color="#FF6B6B" />
+            </View>
           </Animated.View>
 
           <Animated.View pointerEvents="none" style={{ position: 'absolute', top: 24, right: 18, opacity: passOpacity }}>
-            <Image source={require('./assets/devil-Photoroom.png')} style={{ width: 100, height: 100 }} resizeMode="contain" />
+            {/* <Image source={require('../assets/devil-Photoroom.png')} style={{ width: 100, height: 100 }} resizeMode="contain" /> */}
+            <View style={{ width: 100, height: 100, backgroundColor: 'rgba(255,255,255,0.9)', borderRadius: 50, justifyContent: 'center', alignItems: 'center' }}>
+              <AntDesign name="close" size={50} color="#A020F0" />
+            </View>
           </Animated.View>
         </>
       )}

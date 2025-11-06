@@ -17,7 +17,7 @@ const { width: SCREEN_W } = Dimensions.get('window')
 const CARD_W = SCREEN_W * 0.94
 const CARD_H = CARD_W * 1.35
 
-export default function ProfileScreen() {
+export default function ViewProfileScreen() {
   const likeScale = useRef(new Animated.Value(1)).current
   const dislikeScale = useRef(new Animated.Value(1)).current
   const [liked, setLiked] = useState(false)

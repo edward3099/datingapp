@@ -12,10 +12,12 @@ import {
   Keyboard,
 } from 'react-native'
 import { LinearGradient } from 'expo-linear-gradient'
+import { useNavigation } from '@react-navigation/native'
 
 const { width } = Dimensions.get('window')
 
 export default function Onboarding() {
+  const navigation = useNavigation()
   const [index, setIndex] = useState(0)
   const [name, setName] = useState('')
   const [age, setAge] = useState('')
@@ -61,6 +63,9 @@ export default function Onboarding() {
           Animated.spring(slideAnim, { toValue: 0, friction: 6, tension: 70, useNativeDriver: true }),
         ]).start()
       })
+    } else {
+      // Navigate to SwipeScreen after onboarding completes
+      navigation.replace('SwipeScreen')
     }
   }
 
