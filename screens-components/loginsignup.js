@@ -37,7 +37,7 @@ function SparkleDot({ cfg }) {
     );
     loop.start();
     return () => loop.stop();
-  }, [cfg.delay, cfg.duration, cfg.rise, op, ty]);
+  }, [cfg]);
 
   return (
     <Animated.View
@@ -72,7 +72,7 @@ function Sparkles({ count = 48 }) {
         duration: 2200 + Math.random() * 2200,
         rise: height * (0.18 + Math.random() * 0.28),
       })),
-    [count]
+    []
   );
   return (
     <View style={StyleSheet.absoluteFill} pointerEvents="none">
@@ -89,14 +89,17 @@ export default function LoginSignUp() {
   const [mode, setMode] = useState('signin');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [retype, setRetype] = useState('');
 
   const fadeIn = useRef(new Animated.Value(0)).current;
   const panelLift = useRef(new Animated.Value(20)).current;
   const panelScale = useRef(new Animated.Value(0.98)).current;
-
   const btnScale = useRef(new Animated.Value(1)).current;
   const btnColor = useRef(new Animated.Value(0)).current;
   const btnGlow = useRef(new Animated.Value(0)).current;
+
+  const passErrorGlow = useRef(new Animated.Value(0)).current;
+  const retypeErrorGlow = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     Animated.parallel([
@@ -104,7 +107,7 @@ export default function LoginSignUp() {
       Animated.spring(panelLift, { toValue: 0, useNativeDriver: true }),
       Animated.spring(panelScale, { toValue: 1, friction: 6, tension: 90, useNativeDriver: true }),
     ]).start();
-  }, [fadeIn, panelLift, panelScale]);
+  }, []);
 
   const bgBtnColor = btnColor.interpolate({
     inputRange: [0, 1],
@@ -116,7 +119,35 @@ export default function LoginSignUp() {
     outputRange: [0.2, 0.55],
   });
 
+  const passBorderColor = passErrorGlow.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['rgba(255,255,255,0.65)', '#FF4C4C'],
+  });
+
+  const retypeBorderColor = retypeErrorGlow.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['rgba(255,255,255,0.65)', '#FF4C4C'],
+  });
+
+  const flashError = () => {
+    Animated.parallel([
+      Animated.sequence([
+        Animated.timing(passErrorGlow, { toValue: 1, duration: 200, useNativeDriver: false }),
+        Animated.timing(passErrorGlow, { toValue: 0, duration: 400, useNativeDriver: false }),
+      ]),
+      Animated.sequence([
+        Animated.timing(retypeErrorGlow, { toValue: 1, duration: 200, useNativeDriver: false }),
+        Animated.timing(retypeErrorGlow, { toValue: 0, duration: 400, useNativeDriver: false }),
+      ]),
+    ]).start();
+  };
+
   const onContinue = () => {
+    if (mode === 'signup' && password !== retype) {
+      flashError();
+      return;
+    }
+
     Animated.sequence([
       Animated.parallel([
         Animated.spring(btnScale, { toValue: 0.95, useNativeDriver: true }),
@@ -129,16 +160,14 @@ export default function LoginSignUp() {
     ]).start(() => {
       // Navigate after animation completes
       if (mode === 'signin') {
-        navigation.navigate('LoginFlow');
+        navigation.replace('SwipeScreen');
       } else {
-        navigation.navigate('Onboarding');
+        navigation.replace('Onboarding');
       }
     });
   };
 
-  const toggleMode = () => {
-    setMode((m) => (m === 'signin' ? 'signup' : 'signin'));
-  };
+  const toggleMode = () => setMode((m) => (m === 'signin' ? 'signup' : 'signin'));
 
   return (
     <LinearGradient
@@ -147,7 +176,6 @@ export default function LoginSignUp() {
       end={{ x: 1, y: 1 }}
       style={styles.container}
     >
-      {/* background and sparkles */}
       <Animated.View pointerEvents="none" style={styles.depthFog} />
       <Animated.View pointerEvents="none" style={styles.depthFog2} />
       <Sparkles count={54} />
@@ -155,22 +183,15 @@ export default function LoginSignUp() {
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1, width: '100%' }}>
         <View style={styles.safePad} />
 
-        {/* stable amour text */}
         <View style={styles.headerWrap}>
           <Text style={styles.brand}>amour</Text>
-          <Text style={styles.tagline}>
-            {mode === 'signin' ? 'welcome back' : 'create your vibe'}
-          </Text>
+          <Text style={styles.tagline}>{mode === 'signin' ? 'welcome back' : 'create your vibe'}</Text>
         </View>
 
-        {/* glassy card */}
         <Animated.View
           style={[
             styles.card,
-            {
-              opacity: fadeIn,
-              transform: [{ translateY: panelLift }, { scale: panelScale }],
-            },
+            { opacity: fadeIn, transform: [{ translateY: panelLift }, { scale: panelScale }] },
           ]}
         >
           <LinearGradient
@@ -195,7 +216,7 @@ export default function LoginSignUp() {
 
             <View style={{ height: 14 }} />
 
-            <View style={styles.inputWrap}>
+            <Animated.View style={[styles.inputWrap, { borderColor: passBorderColor }]}>
               <Text style={styles.inputLabel}>password</Text>
               <TextInput
                 style={styles.input}
@@ -205,7 +226,24 @@ export default function LoginSignUp() {
                 value={password}
                 onChangeText={setPassword}
               />
-            </View>
+            </Animated.View>
+
+            {mode === 'signup' && (
+              <>
+                <View style={{ height: 14 }} />
+                <Animated.View style={[styles.inputWrap, { borderColor: retypeBorderColor }]}>
+                  <Text style={styles.inputLabel}>retype password</Text>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="••••••••"
+                    placeholderTextColor="#8FB3CC"
+                    secureTextEntry
+                    value={retype}
+                    onChangeText={setRetype}
+                  />
+                </Animated.View>
+              </>
+            )}
 
             <View style={{ height: 22 }} />
 
@@ -250,7 +288,6 @@ export default function LoginSignUp() {
   );
 }
 
-/* ---------- Styles ---------- */
 const styles = StyleSheet.create({
   container: { flex: 1 },
   safePad: { height: 64 },
