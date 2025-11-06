@@ -41,11 +41,11 @@ const PASS_FEEDBACK = ['kept standards high', 'staying selective', 'fair call']
 const TIP_DISLIKES_3 = 'try widening tags in filters'
 
 const initialDeck = [
-  { id: '1', name: 'amara', age: 24, imageUri: 'https://picsum.photos/800/1000?1', tags: ['design', 'poetry'] },
-  { id: '2', name: 'nate', age: 27, imageUri: 'https://picsum.photos/800/1000?2', tags: ['climb', 'film'] },
-  { id: '3', name: 'luna', age: 26, imageUri: 'https://picsum.photos/800/1000?3', tags: ['music', 'travel'] },
-  { id: '4', name: 'jules', age: 29, imageUri: 'https://picsum.photos/800/1000?4', tags: ['code', 'coffee'] },
-  { id: '5', name: 'kai', age: 23, imageUri: 'https://picsum.photos/800/1000?5', tags: ['art', 'skate'] },
+  { id: '1', name: 'amara', age: 24, imageUri: require('./assets/angel.png'), tags: ['design', 'poetry'] },
+  { id: '2', name: 'nate', age: 27, imageUri: require('./assets/devil-Photoroom.png'), tags: ['climb', 'film'] },
+  { id: '3', name: 'luna', age: 26, imageUri: require('./assets/angel.png'), tags: ['music', 'travel'] },
+  { id: '4', name: 'jules', age: 29, imageUri: require('./assets/devil-Photoroom.png'), tags: ['code', 'coffee'] },
+  { id: '5', name: 'kai', age: 23, imageUri: require('./assets/angel.png'), tags: ['art', 'skate'] },
 ]
 
 export default function SwipeScreen() {
@@ -282,7 +282,7 @@ function Card({ profile, isTop, pan }) {
         transform: [{ scale: isTop ? breatheScale : 1 }],
       }}
     >
-      <Image source={{ uri: profile.imageUri }} style={styles.cardImg} resizeMode="cover" />
+      <Image source={profile.imageUri} style={styles.cardImg} resizeMode="cover" />
       <View style={styles.overlayWarm} />
 
       {isTop && Array.from({ length: 8 }).map((_, i) => <SubtleSpark key={i} delay={i * 600} />)}
@@ -290,17 +290,11 @@ function Card({ profile, isTop, pan }) {
       {isTop && (
         <>
           <Animated.View pointerEvents="none" style={{ position: 'absolute', top: 24, left: 18, opacity: likeOpacity }}>
-            {/* <Image source={require('../assets/angel.png')} style={{ width: 100, height: 100 }} resizeMode="contain" /> */}
-            <View style={{ width: 100, height: 100, backgroundColor: 'rgba(255,255,255,0.9)', borderRadius: 50, justifyContent: 'center', alignItems: 'center' }}>
-              <AntDesign name="heart" size={50} color="#FF6B6B" />
-            </View>
+            <Image source={require('./assets/angel.png')} style={{ width: 100, height: 100 }} resizeMode="contain" />
           </Animated.View>
 
           <Animated.View pointerEvents="none" style={{ position: 'absolute', top: 24, right: 18, opacity: passOpacity }}>
-            {/* <Image source={require('../assets/devil-Photoroom.png')} style={{ width: 100, height: 100 }} resizeMode="contain" /> */}
-            <View style={{ width: 100, height: 100, backgroundColor: 'rgba(255,255,255,0.9)', borderRadius: 50, justifyContent: 'center', alignItems: 'center' }}>
-              <AntDesign name="close" size={50} color="#A020F0" />
-            </View>
+            <Image source={require('./assets/devil-Photoroom.png')} style={{ width: 100, height: 100 }} resizeMode="contain" />
           </Animated.View>
         </>
       )}
