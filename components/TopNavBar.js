@@ -1,9 +1,10 @@
 import React, { useRef, useState, useEffect } from 'react';
-import { View, Pressable, Animated, StyleSheet, Dimensions } from 'react-native';
+import { View, Pressable, Animated, StyleSheet, Dimensions, Platform, StatusBar } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { AntDesign, Feather } from '@expo/vector-icons';
 import { useNavigation, useRoute } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const { width } = Dimensions.get('window');
 
@@ -107,8 +108,12 @@ function NavButton({ type = 'swipe', active, focused, onPress }) {
 export default function TopNavBar() {
   const navigation = useNavigation();
   const route = useRoute();
+  const insets = useSafeAreaInsets();
   const fadeIn = useRef(new Animated.Value(0)).current;
   const lift = useRef(new Animated.Value(-20)).current;
+  
+  // Calculate top position accounting for status bar (iOS status bar is typically 44-50px)
+  const topPosition = Platform.OS === 'ios' ? Math.max(insets.top + 8, 50) : 10;
 
   // Determine current screen based on route name
   const getCurrentScreen = () => {
@@ -139,7 +144,7 @@ export default function TopNavBar() {
   };
 
   return (
-    <Animated.View style={[styles.container, { opacity: fadeIn, transform: [{ translateY: lift }] }]}>
+    <Animated.View style={[styles.container, { top: topPosition, opacity: fadeIn, transform: [{ translateY: lift }] }]}>
       <BlurView intensity={95} tint="light" style={styles.navWrap}>
         <NavButton
           type="swipe"
@@ -168,7 +173,6 @@ export default function TopNavBar() {
 const styles = StyleSheet.create({
   container: {
     position: 'absolute',
-    top: 10,
     left: 0,
     right: 0,
     alignItems: 'center',

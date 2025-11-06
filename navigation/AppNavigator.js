@@ -1,6 +1,7 @@
 import React from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import SplashScreen from '../screens-components/splashscreen';
 import LoginSignUp from '../screens-components/loginsignup';
@@ -19,32 +20,34 @@ const Stack = createNativeStackNavigator();
 
 export default function AppNavigator() {
   return (
-    <NavigationContainer>
-      <Stack.Navigator
-        initialRouteName="Splash"
-        screenOptions={{
-          headerShown: false,
-          animation: 'slide_from_right',
-        }}
-      >
-        <Stack.Screen name="Splash" component={SplashScreen} />
-        <Stack.Screen name="LoginSignUp" component={LoginSignUp} />
-        <Stack.Screen name="LoginFlow" component={LoginFlow} />
-        <Stack.Screen name="Onboarding" component={Onboarding} />
-        <Stack.Screen name="SwipeScreen" component={SwipeScreen} />
-        <Stack.Screen name="UserProfile" component={UserProfileScreen} />
-        <Stack.Screen name="ViewProfile" component={ViewProfileScreen} />
-        <Stack.Screen name="Chats" component={ChatsScreen} />
-        <Stack.Screen name="Messages" component={MessagesScreen} />
-        <Stack.Screen 
-          name="Debug" 
-          component={DebugScreen}
-          options={{ headerShown: true, title: 'Debug Console' }}
-        />
-      </Stack.Navigator>
-      <ErrorBoundary>
-        <DevMenu />
-      </ErrorBoundary>
-    </NavigationContainer>
+    <SafeAreaProvider>
+      <NavigationContainer>
+        <Stack.Navigator
+          initialRouteName="Splash"
+          screenOptions={{
+            headerShown: false,
+            animation: 'slide_from_right',
+          }}
+        >
+          <Stack.Screen name="Splash" component={SplashScreen} />
+          <Stack.Screen name="LoginSignUp" component={LoginSignUp} />
+          <Stack.Screen name="LoginFlow" component={LoginFlow} />
+          <Stack.Screen name="Onboarding" component={Onboarding} />
+          <Stack.Screen name="SwipeScreen" component={SwipeScreen} />
+          <Stack.Screen name="UserProfile" component={UserProfileScreen} />
+          <Stack.Screen name="ViewProfile" component={ViewProfileScreen} />
+          <Stack.Screen name="Chats" component={ChatsScreen} />
+          <Stack.Screen name="Messages" component={MessagesScreen} />
+          <Stack.Screen 
+            name="Debug" 
+            component={DebugScreen}
+            options={{ headerShown: true, title: 'Debug Console' }}
+          />
+        </Stack.Navigator>
+        <ErrorBoundary>
+          <DevMenu />
+        </ErrorBoundary>
+      </NavigationContainer>
+    </SafeAreaProvider>
   );
 }
