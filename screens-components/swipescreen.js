@@ -185,7 +185,7 @@ export default function SwipeScreen() {
       <LinearGradient colors={['#E8F6FF', '#F3FAFF']} style={StyleSheet.absoluteFill} />
       <TopNavBar />
 
-      <View style={styles.deckContainer} pointerEvents="box-none">
+      <View style={[styles.deckContainer, { paddingTop: 110 }]} pointerEvents="box-none">
         {visible.length > 0 ? (
           visible.map((profile, i) => {
             const isTop = i === 0

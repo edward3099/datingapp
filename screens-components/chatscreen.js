@@ -116,7 +116,7 @@ export default function ChatsScreen() {
         ]}
       />
 
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1, paddingTop: 110 }}>
         <View style={styles.header}>
           <View style={styles.headerInfo}>
             <Image source={{ uri: 'https://picsum.photos/200/200?random' }} style={styles.headerAvatar} />

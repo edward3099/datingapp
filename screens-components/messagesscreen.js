@@ -101,7 +101,7 @@ export default function MessagesScreen() {
         data={combinedData}
         keyExtractor={(item, index) => `${item.type}-${index}`}
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingBottom: 120 }}
+        contentContainerStyle={{ paddingTop: 110, paddingBottom: 120 }}
         renderItem={({ item, index }) => {
           if (item.type === 'header')
             return (
@@ -280,7 +280,7 @@ function UnreadCard({ item, onPress }) {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  header: { paddingTop: 70, paddingHorizontal: 20, paddingBottom: 16 },
+  header: { paddingTop: 0, paddingHorizontal: 20, paddingBottom: 16 },
   headerTitle: { fontSize: 32, fontWeight: '800', color: '#063970' },
   matchesSection: { marginBottom: 20 },
   sectionTitle: {

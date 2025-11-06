@@ -173,7 +173,7 @@ export default function ViewProfileScreen() {
 
       <Animated.ScrollView
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ alignItems: 'center', paddingBottom: 180 }}
+        contentContainerStyle={{ alignItems: 'center', paddingTop: 110, paddingBottom: 180 }}
       >
         <Animated.View style={[styles.heroContainer, { transform: [{ translateX: cardShake }] }]}>
           <Image source={{ uri: 'https://picsum.photos/1000/1200' }} style={styles.heroImage} />
