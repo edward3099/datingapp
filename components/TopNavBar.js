@@ -37,24 +37,34 @@ function NavButton({ type = 'swipe', active, focused, onPress }) {
   }, [focused, active]);
 
   const handlePress = () => {
-    Animated.sequence([
-      Animated.parallel([
-        Animated.timing(lift, { toValue: -8, duration: 120, useNativeDriver: true }),
-        Animated.spring(scale, { toValue: 1.15, friction: 5, tension: 120, useNativeDriver: true }),
-        Animated.timing(glow, { toValue: 1, duration: 180, useNativeDriver: false }),
-      ]),
-      Animated.parallel([
-        Animated.spring(lift, { toValue: 0, friction: 6, tension: 100, useNativeDriver: true }),
-        Animated.spring(scale, { toValue: 1.12, friction: 6, tension: 120, useNativeDriver: true }),
-        Animated.timing(glow, { toValue: 0, duration: 350, useNativeDriver: false }),
-      ]),
-    ]).start(() => onPress());
+    // Stop any running animations first
+    lift.stopAnimation();
+    scale.stopAnimation();
+    glow.stopAnimation();
+    
+    // Start animations separately to avoid mixing native/JS drivers
+    Animated.parallel([
+      Animated.timing(lift, { toValue: -8, duration: 120, useNativeDriver: true }),
+      Animated.spring(scale, { toValue: 1.15, friction: 5, tension: 120, useNativeDriver: true }),
+    ]).start();
+    
+    // Start JS driver animation separately
+    setTimeout(() => {
+      Animated.timing(glow, { toValue: 1, duration: 180, useNativeDriver: false }).start(() => {
+        Animated.parallel([
+          Animated.spring(lift, { toValue: 0, friction: 6, tension: 100, useNativeDriver: true }),
+          Animated.spring(scale, { toValue: 1.12, friction: 6, tension: 120, useNativeDriver: true }),
+        ]).start();
+        
+        Animated.timing(glow, { toValue: 0, duration: 350, useNativeDriver: false }).start(() => {
+          onPress();
+        });
+      });
+    }, 0);
   };
 
-  const glowShadow = glow.interpolate({
-    inputRange: [0, 1],
-    outputRange: ['rgba(0,0,0,0)', gradients[type][0] + '99'],
-  });
+  // Note: shadowColor cannot be animated with native driver, using static shadow
+  const glowShadow = gradients[type][0] + '99';
 
   const renderIcon = () => {
     if (type === 'messages') return <Feather name="send" size={26} color="#fff" />;
@@ -64,26 +74,31 @@ function NavButton({ type = 'swipe', active, focused, onPress }) {
 
   return (
     <Pressable onPress={handlePress} style={styles.pressArea}>
-      <Animated.View
+      <View
         style={{
-          transform: [{ translateY: lift }, { scale }],
-          opacity: fade,
           shadowColor: glowShadow,
-          shadowOpacity: 0.9,
+          shadowOpacity: active ? 0.6 : 0.3,
           shadowRadius: active ? 14 : 6,
           shadowOffset: { width: 0, height: 4 },
         }}
       >
-        <LinearGradient
-          colors={gradients[type]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={[styles.button, active && { opacity: 1 }]}
+        <Animated.View
+          style={{
+            transform: [{ translateY: lift }, { scale }],
+            opacity: fade,
+          }}
         >
-          {renderIcon()}
-          <View style={styles.reflection} />
-        </LinearGradient>
-      </Animated.View>
+          <LinearGradient
+            colors={gradients[type]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={[styles.button, active && { opacity: 1 }]}
+          >
+            {renderIcon()}
+            <View style={styles.reflection} />
+          </LinearGradient>
+        </Animated.View>
+      </View>
     </Pressable>
   );
 }
