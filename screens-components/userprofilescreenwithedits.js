@@ -163,7 +163,7 @@ export default function UserProfileScreen() {
               style={styles.startButtonGradient}
             >
               <Text style={styles.startButtonText}>Start Swiping</Text>
-              <AntDesign name="arrowright" size={20} color="#fff" style={{ marginLeft: 8 }} />
+              <AntDesign name="right" size={20} color="#fff" style={{ marginLeft: 8 }} />
             </LinearGradient>
           </Pressable>
         </View>

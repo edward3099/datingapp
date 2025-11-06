@@ -72,7 +72,7 @@ export default function LoginFlow() {
 
       <View style={styles.header}>
         <Pressable onPress={() => navigation.goBack()} style={styles.backButton}>
-          <AntDesign name="arrowleft" size={24} color="#063970" />
+          <AntDesign name="left" size={24} color="#063970" />
         </Pressable>
         <View style={styles.progressBar}>
           <View style={[styles.progressFill, { width: `${(step / 2) * 100}%` }]} />
@@ -139,7 +139,7 @@ export default function LoginFlow() {
             <Text style={styles.buttonText}>
               {step === 1 ? 'Continue' : 'Sign In'}
             </Text>
-            <AntDesign name="arrowright" size={20} color="#fff" style={{ marginLeft: 8 }} />
+            <AntDesign name="right" size={20} color="#fff" style={{ marginLeft: 8 }} />
           </LinearGradient>
         </Pressable>
       </Animated.View>

@@ -130,6 +130,14 @@ export default function LoginSignUp() {
   });
 
   const flashError = () => {
+    // Stop any existing animations first
+    passErrorGlow.stopAnimation();
+    retypeErrorGlow.stopAnimation();
+    
+    // Reset values
+    passErrorGlow.setValue(0);
+    retypeErrorGlow.setValue(0);
+    
     Animated.parallel([
       Animated.sequence([
         Animated.timing(passErrorGlow, { toValue: 1, duration: 200, useNativeDriver: false }),
