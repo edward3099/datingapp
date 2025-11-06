@@ -1,227 +1,311 @@
-import React, { useState, useRef } from 'react';
+import React, { useRef, useEffect, useState, useMemo } from 'react';
 import {
   View,
   Text,
   StyleSheet,
-  Pressable,
   Animated,
   Dimensions,
   TextInput,
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+  TouchableWithoutFeedback,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useNavigation } from '@react-navigation/native';
-import { AntDesign } from '@expo/vector-icons';
 
-const { width } = Dimensions.get('window');
+const { width, height } = Dimensions.get('window');
 
+/* ---------- Sparkles ---------- */
+function SparkleDot({ cfg }) {
+  const ty = useRef(new Animated.Value(0)).current;
+  const op = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.delay(cfg.delay),
+        Animated.parallel([
+          Animated.timing(op, { toValue: 1, duration: 500, useNativeDriver: true }),
+          Animated.timing(ty, { toValue: -cfg.rise, duration: cfg.duration, useNativeDriver: true }),
+        ]),
+        Animated.parallel([
+          Animated.timing(op, { toValue: 0, duration: 600, useNativeDriver: true }),
+          Animated.timing(ty, { toValue: 0, duration: 0, useNativeDriver: true }),
+        ]),
+      ])
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [cfg.delay, cfg.duration, cfg.rise, op, ty]);
+
+  return (
+    <Animated.View
+      pointerEvents="none"
+      style={{
+        position: 'absolute',
+        bottom: cfg.baseY,
+        left: cfg.left,
+        width: cfg.size,
+        height: cfg.size,
+        borderRadius: cfg.size / 2,
+        backgroundColor: 'rgba(255,255,255,0.95)',
+        opacity: op,
+        transform: [{ translateY: ty }],
+        shadowColor: '#FFFFFF',
+        shadowOpacity: 0.6,
+        shadowRadius: 2,
+        shadowOffset: { width: 0, height: 0 },
+      }}
+    />
+  );
+}
+
+function Sparkles({ count = 48 }) {
+  const configs = useMemo(
+    () =>
+      Array.from({ length: count }).map(() => ({
+        left: Math.random() * width,
+        baseY: height * 0.35 + Math.random() * height * 0.5,
+        size: 1 + Math.random() * 2.5,
+        delay: Math.random() * 2500,
+        duration: 2200 + Math.random() * 2200,
+        rise: height * (0.18 + Math.random() * 0.28),
+      })),
+    [count]
+  );
+  return (
+    <View style={StyleSheet.absoluteFill} pointerEvents="none">
+      {configs.map((c, i) => (
+        <SparkleDot key={`sp-${i}`} cfg={c} />
+      ))}
+    </View>
+  );
+}
+
+/* ---------- Auth Screen ---------- */
 export default function LoginSignUp() {
   const navigation = useNavigation();
-  const [isLogin, setIsLogin] = useState(true);
-  const slideAnim = useRef(new Animated.Value(0)).current;
-  const fadeAnim = useRef(new Animated.Value(1)).current;
+  const [mode, setMode] = useState('signin');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
 
-  const toggleMode = () => {
+  const fadeIn = useRef(new Animated.Value(0)).current;
+  const panelLift = useRef(new Animated.Value(20)).current;
+  const panelScale = useRef(new Animated.Value(0.98)).current;
+
+  const btnScale = useRef(new Animated.Value(1)).current;
+  const btnColor = useRef(new Animated.Value(0)).current;
+  const btnGlow = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
     Animated.parallel([
-      Animated.timing(fadeAnim, {
-        toValue: 0,
-        duration: 200,
-        useNativeDriver: true,
-      }),
-      Animated.timing(slideAnim, {
-        toValue: isLogin ? 1 : 0,
-        duration: 300,
-        useNativeDriver: true,
-      }),
+      Animated.timing(fadeIn, { toValue: 1, duration: 600, useNativeDriver: true }),
+      Animated.spring(panelLift, { toValue: 0, useNativeDriver: true }),
+      Animated.spring(panelScale, { toValue: 1, friction: 6, tension: 90, useNativeDriver: true }),
+    ]).start();
+  }, [fadeIn, panelLift, panelScale]);
+
+  const bgBtnColor = btnColor.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['#007AFF', '#FF4C4C'],
+  });
+
+  const glowOpacity = btnGlow.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0.2, 0.55],
+  });
+
+  const onContinue = () => {
+    Animated.sequence([
+      Animated.parallel([
+        Animated.spring(btnScale, { toValue: 0.95, useNativeDriver: true }),
+        Animated.timing(btnGlow, { toValue: 1, duration: 180, useNativeDriver: false }),
+      ]),
+      Animated.parallel([
+        Animated.spring(btnScale, { toValue: 1, friction: 4, tension: 120, useNativeDriver: true }),
+        Animated.timing(btnGlow, { toValue: 0, duration: 220, useNativeDriver: false }),
+      ]),
     ]).start(() => {
-      setIsLogin(!isLogin);
-      fadeAnim.setValue(0);
-      Animated.timing(fadeAnim, {
-        toValue: 1,
-        duration: 200,
-        useNativeDriver: true,
-      }).start();
+      // Navigate after animation completes
+      if (mode === 'signin') {
+        navigation.navigate('LoginFlow');
+      } else {
+        navigation.navigate('Onboarding');
+      }
     });
   };
 
-  const handleContinue = () => {
-    if (isLogin) {
-      navigation.navigate('LoginFlow');
-    } else {
-      navigation.navigate('Onboarding');
-    }
+  const toggleMode = () => {
+    setMode((m) => (m === 'signin' ? 'signup' : 'signin'));
   };
-
-  const translateX = slideAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0, width],
-  });
 
   return (
     <LinearGradient
-      colors={['#E8F6FF', '#F3FAFF', '#FFFFFF']}
+      colors={['#B8E9FF', '#E8F6FF']}
+      start={{ x: 0, y: 0 }}
+      end={{ x: 1, y: 1 }}
       style={styles.container}
     >
-      <View style={styles.header}>
-        <Text style={styles.title}>{isLogin ? 'Welcome Back' : 'Get Started'}</Text>
-        <Text style={styles.subtitle}>
-          {isLogin ? 'Sign in to continue' : 'Create your account'}
-        </Text>
-      </View>
+      {/* background and sparkles */}
+      <Animated.View pointerEvents="none" style={styles.depthFog} />
+      <Animated.View pointerEvents="none" style={styles.depthFog2} />
+      <Sparkles count={54} />
 
-      <Animated.View
-        style={[
-          styles.formContainer,
-          {
-            opacity: fadeAnim,
-            transform: [{ translateX }],
-          },
-        ]}
-      >
-        {isLogin ? (
-          <View style={styles.form}>
-            <View style={styles.inputContainer}>
-              <TextInput
-                placeholder="Email or username"
-                placeholderTextColor="#8EA1B8"
-                style={styles.input}
-              />
-            </View>
-            <View style={styles.inputContainer}>
-              <TextInput
-                placeholder="Password"
-                placeholderTextColor="#8EA1B8"
-                secureTextEntry
-                style={styles.input}
-              />
-            </View>
-            <Pressable onPress={() => navigation.navigate('LoginFlow')}>
-              <Text style={styles.forgotPassword}>Forgot password?</Text>
-            </Pressable>
-          </View>
-        ) : (
-          <View style={styles.form}>
-            <View style={styles.inputContainer}>
-              <TextInput
-                placeholder="Email"
-                placeholderTextColor="#8EA1B8"
-                keyboardType="email-address"
-                style={styles.input}
-              />
-            </View>
-            <View style={styles.inputContainer}>
-              <TextInput
-                placeholder="Create password"
-                placeholderTextColor="#8EA1B8"
-                secureTextEntry
-                style={styles.input}
-              />
-            </View>
-          </View>
-        )}
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1, width: '100%' }}>
+        <View style={styles.safePad} />
 
-        <Pressable onPress={handleContinue} style={styles.continueButton}>
-          <LinearGradient
-            colors={['#5BC0F8', '#007AFF']}
-            style={styles.buttonGradient}
-          >
-            <Text style={styles.buttonText}>
-              {isLogin ? 'Sign In' : 'Sign Up'}
-            </Text>
-            <AntDesign name="arrowright" size={20} color="#fff" style={{ marginLeft: 8 }} />
-          </LinearGradient>
-        </Pressable>
-      </Animated.View>
-
-      <View style={styles.toggleContainer}>
-        <Text style={styles.toggleText}>
-          {isLogin ? "Don't have an account? " : 'Already have an account? '}
-        </Text>
-        <Pressable onPress={toggleMode}>
-          <Text style={styles.toggleLink}>
-            {isLogin ? 'Sign Up' : 'Sign In'}
+        {/* stable amour text */}
+        <View style={styles.headerWrap}>
+          <Text style={styles.brand}>amour</Text>
+          <Text style={styles.tagline}>
+            {mode === 'signin' ? 'welcome back' : 'create your vibe'}
           </Text>
-        </Pressable>
-      </View>
+        </View>
+
+        {/* glassy card */}
+        <Animated.View
+          style={[
+            styles.card,
+            {
+              opacity: fadeIn,
+              transform: [{ translateY: panelLift }, { scale: panelScale }],
+            },
+          ]}
+        >
+          <LinearGradient
+            colors={['rgba(255,255,255,0.55)', 'rgba(255,255,255,0.18)']}
+            style={StyleSheet.absoluteFill}
+          />
+          <View style={styles.cardInner}>
+            <Text style={styles.cardTitle}>{mode === 'signin' ? 'sign in' : 'sign up'}</Text>
+
+            <View style={styles.inputWrap}>
+              <Text style={styles.inputLabel}>email</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="you@example.com"
+                placeholderTextColor="#8FB3CC"
+                autoCapitalize="none"
+                keyboardType="email-address"
+                value={email}
+                onChangeText={setEmail}
+              />
+            </View>
+
+            <View style={{ height: 14 }} />
+
+            <View style={styles.inputWrap}>
+              <Text style={styles.inputLabel}>password</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="••••••••"
+                placeholderTextColor="#8FB3CC"
+                secureTextEntry
+                value={password}
+                onChangeText={setPassword}
+              />
+            </View>
+
+            <View style={{ height: 22 }} />
+
+            <TouchableWithoutFeedback
+              onPressIn={() => {
+                Animated.spring(btnScale, { toValue: 0.96, useNativeDriver: true }).start();
+                Animated.timing(btnColor, { toValue: 1, duration: 220, useNativeDriver: false }).start();
+              }}
+              onPressOut={() => {
+                Animated.spring(btnScale, { toValue: 1, friction: 5, tension: 120, useNativeDriver: true }).start();
+                Animated.timing(btnColor, { toValue: 0, duration: 260, useNativeDriver: false }).start();
+                onContinue();
+              }}
+            >
+              <Animated.View
+                style={[
+                  styles.cta,
+                  {
+                    transform: [{ scale: btnScale }],
+                    backgroundColor: bgBtnColor,
+                    shadowOpacity: glowOpacity,
+                  },
+                ]}
+              >
+                <Text style={styles.ctaText}>continue</Text>
+              </Animated.View>
+            </TouchableWithoutFeedback>
+
+            <View style={styles.toggleRow}>
+              <Text style={styles.toggleText}>
+                {mode === 'signin' ? "don't have an account?" : 'already have an account?'}
+              </Text>
+              <Pressable onPress={toggleMode} hitSlop={10}>
+                <Text style={styles.toggleLink}>{mode === 'signin' ? 'sign up' : 'sign in'}</Text>
+              </Pressable>
+            </View>
+          </View>
+        </Animated.View>
+        <View style={{ height: 36 }} />
+      </KeyboardAvoidingView>
     </LinearGradient>
   );
 }
 
+/* ---------- Styles ---------- */
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    paddingTop: 100,
-    paddingHorizontal: 24,
+  container: { flex: 1 },
+  safePad: { height: 64 },
+  headerWrap: { alignItems: 'center', marginBottom: 12 },
+  brand: { fontSize: 42, fontWeight: '800', color: '#063970', textTransform: 'lowercase' },
+  tagline: { marginTop: 6, color: '#345E7A', fontSize: 14, fontWeight: '600' },
+  depthFog: {
+    position: 'absolute',
+    width: width * 1.4,
+    height: height * 0.8,
+    top: height * 0.18,
+    backgroundColor: '#89CFF0',
+    opacity: 0.16,
+    borderRadius: 900,
   },
-  header: {
-    alignItems: 'center',
-    marginBottom: 50,
+  depthFog2: {
+    position: 'absolute',
+    width: width * 1.2,
+    height: height * 0.9,
+    top: height * 0.08,
+    backgroundColor: '#C2ECFF',
+    opacity: 0.12,
+    borderRadius: 900,
   },
-  title: {
-    fontSize: 32,
-    fontWeight: '800',
-    color: '#063970',
-    marginBottom: 8,
+  card: {
+    marginHorizontal: 18,
+    borderRadius: 28,
+    overflow: 'hidden',
+    shadowColor: '#5BC0F8',
+    shadowOpacity: 0.35,
+    shadowRadius: 24,
+    shadowOffset: { width: 0, height: 10 },
   },
-  subtitle: {
-    fontSize: 16,
-    color: '#5C738A',
-  },
-  formContainer: {
-    flex: 1,
-  },
-  form: {
-    marginBottom: 30,
-  },
-  inputContainer: {
-    marginBottom: 16,
-  },
-  input: {
-    backgroundColor: 'rgba(255,255,255,0.8)',
-    borderRadius: 20,
-    padding: 16,
-    fontSize: 16,
-    color: '#063970',
+  cardInner: { paddingHorizontal: 18, paddingTop: 18, paddingBottom: 18 },
+  cardTitle: { fontSize: 18, fontWeight: '800', color: '#0A4570', marginBottom: 14, textTransform: 'lowercase' },
+  inputWrap: {
+    backgroundColor: 'rgba(255,255,255,0.45)',
     borderWidth: 1,
-    borderColor: '#E0E6ED',
+    borderColor: 'rgba(255,255,255,0.65)',
+    borderRadius: 16,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
   },
-  forgotPassword: {
-    color: '#5BC0F8',
-    fontSize: 14,
-    textAlign: 'right',
-    marginTop: 8,
-  },
-  continueButton: {
-    marginTop: 20,
-  },
-  buttonGradient: {
-    flexDirection: 'row',
+  inputLabel: { fontSize: 12, color: '#467A99', fontWeight: '700', marginBottom: 6, textTransform: 'lowercase' },
+  input: { fontSize: 16, color: '#063970', paddingVertical: 6 },
+  cta: {
+    borderRadius: 18,
+    paddingVertical: 14,
     alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 16,
-    borderRadius: 25,
     shadowColor: '#007AFF',
-    shadowOpacity: 0.4,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
   },
-  buttonText: {
-    color: '#fff',
-    fontSize: 18,
-    fontWeight: '700',
-  },
-  toggleContainer: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingBottom: 40,
-  },
-  toggleText: {
-    color: '#5C738A',
-    fontSize: 14,
-  },
-  toggleLink: {
-    color: '#5BC0F8',
-    fontSize: 14,
-    fontWeight: '700',
-  },
+  ctaText: { color: '#fff', fontSize: 16, fontWeight: '800', textTransform: 'lowercase' },
+  toggleRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', marginTop: 14 },
+  toggleText: { color: '#3E5F78', fontSize: 13, marginRight: 6 },
+  toggleLink: { color: '#007AFF', fontSize: 13, fontWeight: '800' },
 });
