@@ -156,6 +156,11 @@ export default function LoginSignUp() {
       return;
     }
 
+    // Stop any running animations first
+    btnScale.stopAnimation();
+    btnGlow.stopAnimation();
+    btnColor.stopAnimation();
+
     Animated.sequence([
       Animated.parallel([
         Animated.spring(btnScale, { toValue: 0.95, useNativeDriver: true }),
@@ -257,10 +262,14 @@ export default function LoginSignUp() {
 
             <TouchableWithoutFeedback
               onPressIn={() => {
+                btnScale.stopAnimation();
+                btnColor.stopAnimation();
                 Animated.spring(btnScale, { toValue: 0.96, useNativeDriver: true }).start();
                 Animated.timing(btnColor, { toValue: 1, duration: 220, useNativeDriver: false }).start();
               }}
               onPressOut={() => {
+                btnScale.stopAnimation();
+                btnColor.stopAnimation();
                 Animated.spring(btnScale, { toValue: 1, friction: 5, tension: 120, useNativeDriver: true }).start();
                 Animated.timing(btnColor, { toValue: 0, duration: 260, useNativeDriver: false }).start();
                 onContinue();
