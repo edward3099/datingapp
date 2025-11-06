@@ -19,7 +19,7 @@ class ErrorBoundary extends React.Component {
     });
     
     // Log to a more visible place
-    if (__DEV__) {
+    if (typeof __DEV__ !== 'undefined' && __DEV__) {
       console.log('=== ERROR DETAILS ===');
       console.log('Error:', error);
       console.log('Error Stack:', error.stack);

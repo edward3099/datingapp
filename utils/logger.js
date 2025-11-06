@@ -56,7 +56,7 @@ class Logger {
   }
 
   debug(message, data) {
-    if (__DEV__) {
+    if (typeof __DEV__ !== 'undefined' && __DEV__) {
       this.log(LOG_LEVELS.DEBUG, message, data);
     }
   }

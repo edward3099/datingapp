@@ -12,6 +12,7 @@ import ViewProfileScreen from '../screens-components/viewingotherusersprofilescr
 import ChatsScreen from '../screens-components/chatscreen';
 import MessagesScreen from '../screens-components/messagesscreen';
 import DebugScreen from '../components/DebugScreen';
+import DevMenu from '../components/DevMenu';
 
 const Stack = createNativeStackNavigator();
 
@@ -40,6 +41,7 @@ export default function AppNavigator() {
           options={{ headerShown: true, title: 'Debug Console' }}
         />
       </Stack.Navigator>
+      <DevMenu />
     </NavigationContainer>
   );
 }

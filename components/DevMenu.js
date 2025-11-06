@@ -28,7 +28,11 @@ export default function DevMenu() {
 
   const openDebugScreen = () => {
     setVisible(false);
-    navigation.navigate('Debug');
+    try {
+      navigation.navigate('Debug');
+    } catch (e) {
+      logger.error('Navigation error in DevMenu', { error: e.toString() });
+    }
   };
 
   const testError = () => {
