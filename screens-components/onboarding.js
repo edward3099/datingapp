@@ -64,8 +64,8 @@ export default function Onboarding() {
         ]).start()
       })
     } else {
-      // Navigate to SwipeScreen after onboarding completes
-      navigation.replace('SwipeScreen')
+      // Navigate to User Profile after onboarding completes
+      navigation.replace('UserProfile')
     }
   }
 

@@ -16,6 +16,7 @@ import {
 import { LinearGradient } from 'expo-linear-gradient'
 import { BlurView } from 'expo-blur'
 import { AntDesign } from '@expo/vector-icons'
+import { useNavigation } from '@react-navigation/native'
 import DraggableFlatList, { ScaleDecorator } from 'react-native-draggable-flatlist'
 import * as ImagePicker from 'expo-image-picker'
 
@@ -29,6 +30,7 @@ const TAG_OPTIONS = [
 ]
 
 export default function UserProfileScreen() {
+  const navigation = useNavigation()
   const [photos, setPhotos] = useState(
     Array.from({ length: 10 }).map((_, i) => ({
       id: i.toString(),
@@ -150,6 +152,20 @@ export default function UserProfileScreen() {
               <Text style={styles.settingsItem}>Privacy</Text>
             </Pressable>
           </View>
+
+          {/* START SWIPING BUTTON */}
+          <Pressable
+            onPress={() => navigation.navigate('SwipeScreen')}
+            style={styles.startButton}
+          >
+            <LinearGradient
+              colors={['#5BC0F8', '#007AFF']}
+              style={styles.startButtonGradient}
+            >
+              <Text style={styles.startButtonText}>Start Swiping</Text>
+              <AntDesign name="arrowright" size={20} color="#fff" style={{ marginLeft: 8 }} />
+            </LinearGradient>
+          </Pressable>
         </View>
       </ScrollView>
 
@@ -356,4 +372,24 @@ const styles = StyleSheet.create({
     paddingHorizontal: 22, paddingVertical: 8, borderRadius: 10,
   },
   dialogButtonText: { color: '#fff', fontWeight: '700', fontSize: 16 },
+  startButton: {
+    marginTop: 30,
+    marginBottom: 20,
+  },
+  startButtonGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 16,
+    borderRadius: 25,
+    shadowColor: '#007AFF',
+    shadowOpacity: 0.4,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+  },
+  startButtonText: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: '700',
+  },
 })

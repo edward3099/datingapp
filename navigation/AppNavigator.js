@@ -2,6 +2,9 @@ import React from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 
+import SplashScreen from '../screens-components/splashscreen';
+import LoginSignUp from '../screens-components/loginsignup';
+import LoginFlow from '../screens-components/loginflow';
 import Onboarding from '../screens-components/onboarding';
 import SwipeScreen from '../screens-components/swipescreen';
 import UserProfileScreen from '../screens-components/userprofilescreenwithedits';
@@ -15,12 +18,15 @@ export default function AppNavigator() {
   return (
     <NavigationContainer>
       <Stack.Navigator
-        initialRouteName="Onboarding"
+        initialRouteName="Splash"
         screenOptions={{
           headerShown: false,
           animation: 'slide_from_right',
         }}
       >
+        <Stack.Screen name="Splash" component={SplashScreen} />
+        <Stack.Screen name="LoginSignUp" component={LoginSignUp} />
+        <Stack.Screen name="LoginFlow" component={LoginFlow} />
         <Stack.Screen name="Onboarding" component={Onboarding} />
         <Stack.Screen name="SwipeScreen" component={SwipeScreen} />
         <Stack.Screen name="UserProfile" component={UserProfileScreen} />

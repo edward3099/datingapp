@@ -4,6 +4,9 @@ A modern dating app built with React Native and Expo, featuring swipe-based matc
 
 ## Features
 
+- **Splash Screen**: Animated app launch screen
+- **Login/Sign Up**: Toggle between login and registration
+- **Login Flow**: Step-by-step authentication process
 - **Onboarding Flow**: Multi-step user onboarding with animated transitions
 - **Swipe Screen**: Card-based swiping interface for discovering matches
 - **User Profile**: Editable profile with photo gallery and tag management
@@ -62,8 +65,35 @@ The following image assets need to be added to `/assets/`:
 
 ## Navigation Flow
 
-1. Onboarding → SwipeScreen (after completion)
-2. SwipeScreen → ViewProfile (tap on card)
-3. SwipeScreen → UserProfile (profile button)
-4. SwipeScreen → Chats (messages button)
-5. Chats → Messages (tap on conversation)
+```
+🩵  Splash Screen
+        │
+        ▼
+🔐  Login / Sign Up
+   ┌───────────────┬────────────────┐
+   │                               │
+   ▼                               ▼
+Login Flow                     Sign Up Flow
+   │                               │
+   ▼                               ▼
+❤️  Swipe Screen          ✨  Onboarding Slides
+                              (Welcome → Name → Age/Gender → Bio/Interests → Summary)
+                                      │
+                                      ▼
+                              👤  User Profile Screen
+                                      │
+                                      ▼
+                              ❤️  Swipe Screen
+```
+
+### Screen Details
+
+- **Splash Screen** → Shows app logo, navigates to Login/Sign Up after 2 seconds
+- **Login/Sign Up** → Toggle between login and sign up modes
+- **Login Flow** → Step-by-step login (Email → Password → Swipe Screen)
+- **Onboarding** → Multi-step profile setup for new users
+- **User Profile** → User's own profile with "Start Swiping" button
+- **Swipe Screen** → Main discovery interface
+- **View Profile** → View other users' profiles
+- **Chats** → List of matches and conversations
+- **Messages** → Individual chat conversations
