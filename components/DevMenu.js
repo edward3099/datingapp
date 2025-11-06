@@ -5,7 +5,7 @@ import { logger } from '../utils/logger';
 
 export default function DevMenu() {
   const [visible, setVisible] = useState(false);
-  const navigation = useNavigation();
+  const navigation = useNavigation(); // Must be called unconditionally
 
   // Triple tap to open dev menu
   const [tapCount, setTapCount] = useState(0);
@@ -29,7 +29,11 @@ export default function DevMenu() {
   const openDebugScreen = () => {
     setVisible(false);
     try {
-      navigation.navigate('Debug');
+      if (navigation) {
+        navigation.navigate('Debug');
+      } else {
+        console.error('Navigation not available');
+      }
     } catch (e) {
       logger.error('Navigation error in DevMenu', { error: e.toString() });
     }

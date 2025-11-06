@@ -13,6 +13,7 @@ import ChatsScreen from '../screens-components/chatscreen';
 import MessagesScreen from '../screens-components/messagesscreen';
 import DebugScreen from '../components/DebugScreen';
 import DevMenu from '../components/DevMenu';
+import ErrorBoundary from '../components/ErrorBoundary';
 
 const Stack = createNativeStackNavigator();
 
@@ -41,7 +42,9 @@ export default function AppNavigator() {
           options={{ headerShown: true, title: 'Debug Console' }}
         />
       </Stack.Navigator>
-      <DevMenu />
+      <ErrorBoundary>
+        <DevMenu />
+      </ErrorBoundary>
     </NavigationContainer>
   );
 }

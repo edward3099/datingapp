@@ -74,7 +74,7 @@ class Logger {
   }
 }
 
-export const logger = new Logger();
+const logger = new Logger();
 
 // Global error handler
 if (typeof global !== 'undefined') {
@@ -104,4 +104,5 @@ if (typeof ErrorUtils !== 'undefined') {
   });
 }
 
+export { logger };
 export default logger;
