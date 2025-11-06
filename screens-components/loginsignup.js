@@ -273,17 +273,36 @@ export default function LoginSignUp() {
 
             <TouchableWithoutFeedback
               onPressIn={() => {
+                // Stop all animations first
                 btnScale.stopAnimation();
                 btnColor.stopAnimation();
-                Animated.spring(btnScale, { toValue: 0.96, useNativeDriver: true }).start();
-                Animated.timing(btnColor, { toValue: 1, duration: 220, useNativeDriver: false }).start();
+                btnGlow.stopAnimation();
+                
+                // Small delay to ensure animations are fully stopped before starting new ones
+                setTimeout(() => {
+                  // Start animations - btnColor always uses JS driver (for colors)
+                  Animated.parallel([
+                    Animated.spring(btnScale, { toValue: 0.96, useNativeDriver: true }),
+                    Animated.timing(btnColor, { toValue: 1, duration: 220, useNativeDriver: false }),
+                  ]).start();
+                }, 0);
               }}
               onPressOut={() => {
+                // Stop all animations first
                 btnScale.stopAnimation();
                 btnColor.stopAnimation();
-                Animated.spring(btnScale, { toValue: 1, friction: 5, tension: 120, useNativeDriver: true }).start();
-                Animated.timing(btnColor, { toValue: 0, duration: 260, useNativeDriver: false }).start();
-                onContinue();
+                btnGlow.stopAnimation();
+                
+                // Small delay to ensure animations are fully stopped
+                setTimeout(() => {
+                  // Start animations
+                  Animated.parallel([
+                    Animated.spring(btnScale, { toValue: 1, friction: 5, tension: 120, useNativeDriver: true }),
+                    Animated.timing(btnColor, { toValue: 0, duration: 260, useNativeDriver: false }),
+                  ]).start();
+                  
+                  onContinue();
+                }, 0);
               }}
             >
               <Animated.View
