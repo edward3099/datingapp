@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -11,6 +11,7 @@ import {
   Platform,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useAuth } from '../contexts/AuthContext';
 import { useNavigation } from '@react-navigation/native';
 import { AntDesign } from '@expo/vector-icons';
 
@@ -18,13 +19,31 @@ const { width } = Dimensions.get('window');
 
 export default function LoginFlow() {
   const navigation = useNavigation();
+  const { signIn, isAuthenticated, loading: authLoading, onboardingComplete, lastAuthAction } = useAuth();
   const [step, setStep] = useState(1);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [errorMessage, setErrorMessage] = useState(null);
   const fadeAnim = useRef(new Animated.Value(1)).current;
   const slideAnim = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    if (!isAuthenticated) {
+      return;
+    }
 
-  const handleNext = () => {
+    if (lastAuthAction === 'signup') {
+      navigation.reset({ index: 0, routes: [{ name: 'Onboarding' }] });
+    } else if (onboardingComplete) {
+      navigation.reset({ index: 0, routes: [{ name: 'SwipeScreen' }] });
+    } else {
+      navigation.reset({ index: 0, routes: [{ name: 'Onboarding' }] });
+    }
+    setSubmitting(false);
+  }, [isAuthenticated, onboardingComplete, lastAuthAction, navigation]);
+
+
+  const handleNext = async () => {
     if (step === 1) {
       // Validate email and move to password step
       Animated.parallel([
@@ -55,8 +74,14 @@ export default function LoginFlow() {
         ]).start();
       });
     } else {
-      // Complete login and navigate to SwipeScreen
-      navigation.replace('SwipeScreen');
+      setSubmitting(true);
+      setErrorMessage(null);
+      const { error } = await signIn(email.trim(), password);
+      if (error) {
+        const message = error.message || 'Unable to sign in. Please try again.';
+        setErrorMessage(message);
+        setSubmitting(false);
+      }
     }
   };
 
@@ -124,7 +149,7 @@ export default function LoginFlow() {
         <Pressable
           onPress={handleNext}
           style={styles.continueButton}
-          disabled={step === 1 ? !email.trim() : !password.trim()}
+          disabled={submitting || authLoading || (step === 1 ? !email.trim() : !password.trim())}
         >
           <LinearGradient
             colors={
@@ -132,16 +157,21 @@ export default function LoginFlow() {
                 ? ['#D0D0D0', '#B0B0B0']
                 : step === 2 && !password.trim()
                 ? ['#D0D0D0', '#B0B0B0']
+                : submitting || authLoading
+                ? ['#A0BCD4', '#7AA0C2']
                 : ['#5BC0F8', '#007AFF']
             }
             style={styles.buttonGradient}
           >
             <Text style={styles.buttonText}>
-              {step === 1 ? 'Continue' : 'Sign In'}
+              {submitting || authLoading ? 'Signing In...' : step === 1 ? 'Continue' : 'Sign In'}
             </Text>
             <AntDesign name="right" size={20} color="#fff" style={{ marginLeft: 8 }} />
           </LinearGradient>
         </Pressable>
+        {errorMessage && (
+          <Text style={styles.errorText}>{errorMessage}</Text>
+        )}
       </Animated.View>
     </KeyboardAvoidingView>
   );
@@ -220,5 +250,11 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 18,
     fontWeight: '700',
+  },
+  errorText: {
+    marginTop: 12,
+    color: '#FF4C4C',
+    textAlign: 'center',
+    fontSize: 14,
   },
 });

@@ -1,5 +1,6 @@
 import React from 'react';
 import { View, Text, StyleSheet, ScrollView, Pressable } from 'react-native';
+import { logger } from '../utils/logger';
 
 class ErrorBoundary extends React.Component {
   constructor(props) {
@@ -12,6 +13,21 @@ class ErrorBoundary extends React.Component {
   }
 
   componentDidCatch(error, errorInfo) {
+    // Log to logger first
+    try {
+      logger.error('ErrorBoundary caught React error', {
+        error: error?.toString() || 'Unknown error',
+        message: error?.message,
+        stack: error?.stack,
+        componentStack: errorInfo?.componentStack,
+        errorName: error?.name,
+        errorInfo: errorInfo,
+      });
+    } catch (e) {
+      // If logger fails, still log to console
+      console.error('Failed to log to logger:', e);
+    }
+
     console.error('ErrorBoundary caught an error:', error, errorInfo);
     this.setState({
       error,

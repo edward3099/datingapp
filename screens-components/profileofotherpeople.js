@@ -19,7 +19,7 @@ const { width: SCREEN_W } = Dimensions.get('window')
 const CARD_W = SCREEN_W * 0.94
 const CARD_H = CARD_W * 1.35
 
-export default function ViewProfileScreen() {
+export default function ProfileOfOtherPeopleScreen() {
   const route = useRoute()
   const profile = route.params?.profile || { id: '1', name: 'Profile', age: 25, imageUri: 'https://picsum.photos/1000/1200', tags: [] }
   

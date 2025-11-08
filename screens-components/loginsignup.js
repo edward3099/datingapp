@@ -10,9 +10,12 @@ import {
   Platform,
   Pressable,
   TouchableWithoutFeedback,
+  Alert,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useNavigation } from '@react-navigation/native';
+import { useAuth } from '../contexts/AuthContext';
+import { authService } from '../services/authService';
 import { logger } from '../utils/logger';
 
 const { width, height } = Dimensions.get('window');
@@ -87,10 +90,12 @@ function Sparkles({ count = 48 }) {
 /* ---------- Auth Screen ---------- */
 export default function LoginSignUp() {
   const navigation = useNavigation();
+  const { signIn, signUp, loading: authLoading, isAuthenticated, onboardingComplete, lastAuthAction } = useAuth();
   const [mode, setMode] = useState('signin');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [retype, setRetype] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
 
   const fadeIn = useRef(new Animated.Value(0)).current;
   const panelLift = useRef(new Animated.Value(20)).current;
@@ -125,6 +130,23 @@ export default function LoginSignUp() {
     outputRange: ['rgba(255,255,255,0.65)', '#FF4C4C'],
   });
 
+  useEffect(() => {
+    if (!isAuthenticated) {
+      return;
+    }
+
+    if (lastAuthAction === 'signup' || mode === 'signup') {
+      navigation.reset({ index: 0, routes: [{ name: 'Onboarding' }] });
+      return;
+    }
+
+    if (onboardingComplete) {
+      navigation.reset({ index: 0, routes: [{ name: 'SwipeScreen' }] });
+    } else {
+      navigation.reset({ index: 0, routes: [{ name: 'Onboarding' }] });
+    }
+  }, [isAuthenticated, onboardingComplete, lastAuthAction, mode, navigation]);
+
   const flashError = () => {
     // Stop any existing animations first
     passErrorGlow.stopAnimation();
@@ -146,7 +168,7 @@ export default function LoginSignUp() {
     ]).start();
   };
 
-  const onContinue = () => {
+  const onContinue = async () => {
     try {
       if (mode === 'signup' && password !== retype) {
         flashError();
@@ -154,29 +176,94 @@ export default function LoginSignUp() {
         return;
       }
 
-      // Stop any running animations first
+      if (!email || !password) {
+        Alert.alert('Missing Information', 'Please enter your email and password');
+        return;
+      }
+
+      if (password.length < 6) {
+        Alert.alert('Invalid Password', 'Password must be at least 6 characters');
+        return;
+      }
+
+      setIsLoading(true);
       btnScale.stopAnimation();
 
       // Start animation with native driver only
       Animated.sequence([
         Animated.spring(btnScale, { toValue: 0.95, useNativeDriver: true }),
         Animated.spring(btnScale, { toValue: 1, friction: 4, tension: 120, useNativeDriver: true }),
-      ]).start(() => {
-        // Animation complete callback
-        try {
-          // Navigate after animation completes
-          logger.info('Navigation triggered', { mode, target: mode === 'signin' ? 'SwipeScreen' : 'Onboarding' });
-          if (mode === 'signin') {
-            navigation.replace('SwipeScreen');
-          } else {
-            navigation.replace('Onboarding');
-          }
-        } catch (navError) {
-          logger.error('Navigation error', { error: navError.toString(), stack: navError.stack, mode });
+      ]).start();
+
+      // Authenticate
+      let result;
+      if (mode === 'signin') {
+        result = await signIn(email, password);
+      } else {
+        result = await signUp(email, password);
+      }
+
+      setIsLoading(false);
+
+      if (result.error) {
+        // Handle specific error cases
+        if (result.error.code === 'email_not_confirmed' || result.error.needsConfirmation) {
+          Alert.alert(
+            'Email Confirmation Required',
+            mode === 'signup' 
+              ? 'Please check your email and click the confirmation link to activate your account. You can sign in after confirming your email.'
+              : 'Please check your email and click the confirmation link before signing in. If you didn\'t receive the email, we can resend it.',
+            [
+              { text: 'OK', style: 'cancel' },
+              { 
+                text: 'Resend Email', 
+                onPress: async () => {
+                  setIsLoading(true);
+                  try {
+                    const { error: resendError } = await authService.resendConfirmationEmail(email);
+                    setIsLoading(false);
+                    if (resendError) {
+                      Alert.alert('Error', 'Failed to resend confirmation email: ' + resendError.message);
+                    } else {
+                      Alert.alert('✅ Email Sent', 'Please check your inbox (and spam folder) for the confirmation email.');
+                    }
+                  } catch (e) {
+                    setIsLoading(false);
+                    Alert.alert('Error', 'Failed to resend confirmation email.');
+                  }
+                }
+              }
+            ]
+          );
+        } else if (result.error.code === 'invalid_credentials' || result.error.message?.includes('Invalid login')) {
+          Alert.alert(
+            'Invalid Credentials',
+            'The email or password you entered is incorrect. Please try again.'
+          );
+        } else if (result.error.code === 'user_not_found') {
+          Alert.alert(
+            'Account Not Found',
+            'No account found with this email address. Please sign up first.'
+          );
+        } else {
+          Alert.alert(
+            mode === 'signin' ? 'Sign In Failed' : 'Sign Up Failed',
+            result.error.message || 'An error occurred. Please try again.'
+          );
         }
-      });
+        logger.error('Auth error', { error: result.error.message, mode, code: result.error.code });
+        return;
+      }
+
+      // Navigate after successful auth
+      logger.info('Auth successful', { mode, userId: result.user?.id });
+      if (mode !== 'signin') {
+        navigation.replace('Onboarding');
+      }
     } catch (error) {
+      setIsLoading(false);
       logger.error('onContinue error', { error: error.toString(), stack: error.stack, mode });
+      Alert.alert('Error', 'An unexpected error occurred. Please try again.');
     }
   };
 
@@ -291,10 +378,13 @@ export default function LoginSignUp() {
                     transform: [{ scale: btnScale }],
                     backgroundColor: bgBtnColor,
                     shadowOpacity: glowOpacity,
+                    opacity: isLoading || authLoading ? 0.6 : 1,
                   },
                 ]}
               >
-                <Text style={styles.ctaText}>continue</Text>
+                <Text style={styles.ctaText}>
+                  {isLoading || authLoading ? 'loading...' : 'continue'}
+                </Text>
               </Animated.View>
             </TouchableWithoutFeedback>
 

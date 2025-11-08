@@ -10,11 +10,17 @@ import {
   Animated,
   Easing,
   TouchableWithoutFeedback,
+  ActivityIndicator,
+  Alert,
 } from 'react-native'
 import { LinearGradient } from 'expo-linear-gradient'
 import { BlurView } from 'expo-blur'
 import { AntDesign } from '@expo/vector-icons'
 import { useNavigation } from '@react-navigation/native'
+import { useAuth } from '../contexts/AuthContext'
+import { profileService } from '../services/profileService'
+import { swipeService } from '../services/swipeService'
+import { logger } from '../utils/logger'
 import TopNavBar from '../components/TopNavBar'
 
 const { width: SCREEN_W } = Dimensions.get('window')
@@ -43,18 +49,132 @@ const LIKE_FEEDBACK = ['nice choice', 'good instinct', 'solid pick', 'great vibe
 const PASS_FEEDBACK = ['kept standards high', 'staying selective', 'fair call']
 const TIP_DISLIKES_3 = 'try widening tags in filters'
 
-const initialDeck = [
-  { id: '1', name: 'amara', age: 24, imageUri: require('./assets/angel.png'), tags: ['design', 'poetry'] },
-  { id: '2', name: 'nate', age: 27, imageUri: require('./assets/devil-Photoroom.png'), tags: ['climb', 'film'] },
-  { id: '3', name: 'luna', age: 26, imageUri: require('./assets/angel.png'), tags: ['music', 'travel'] },
-  { id: '4', name: 'jules', age: 29, imageUri: require('./assets/devil-Photoroom.png'), tags: ['code', 'coffee'] },
-  { id: '5', name: 'kai', age: 23, imageUri: require('./assets/angel.png'), tags: ['art', 'skate'] },
-]
+const dedupeProfiles = (profiles) => {
+  const seen = new Set();
+  return profiles.filter((profile) => {
+    if (!profile?.id) return true;
+    if (seen.has(profile.id)) {
+      return false;
+    }
+    seen.add(profile.id);
+    return true;
+  });
+};
 
 export default function SwipeScreen() {
   const navigation = useNavigation()
-  const [deck, setDeck] = useState(initialDeck)
+  const { user, isAuthenticated } = useAuth()
+  const [deck, setDeck] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [loadingMore, setLoadingMore] = useState(false)
   const visible = useMemo(() => deck.slice(0, 3), [deck])
+
+  // Load recommendations on mount and when deck is low
+  useEffect(() => {
+    if (isAuthenticated) {
+      loadRecommendations().catch((error) => {
+        logger.error('Failed to load recommendations in useEffect', {
+          error: error?.message || String(error),
+          stack: error?.stack,
+          userId: user?.id,
+        })
+      })
+    }
+  }, [isAuthenticated])
+
+  // Load more when deck is low
+  useEffect(() => {
+    if (deck.length <= 3 && !loadingMore && isAuthenticated) {
+      loadMoreRecommendations().catch((error) => {
+        logger.error('Failed to load more recommendations in useEffect', {
+          error: error?.message || String(error),
+          stack: error?.stack,
+          userId: user?.id,
+        })
+      })
+    }
+  }, [deck.length])
+
+  const loadRecommendations = async () => {
+    if (!isAuthenticated) return
+
+    setLoading(true)
+    try {
+      const { profiles, error } = await profileService.getRecommendations(25)
+      if (error) throw error
+
+      // Transform profiles to match card format
+      const transformed = (profiles || []).map((profile) => ({
+        id: profile.id,
+        name: profile.display_name || profile.first_name || 'Unknown',
+        age: profile.age || 25,
+        imageUri: profile.avatar_url ? { uri: profile.avatar_url } : require('./assets/angel.png'),
+        tags: profile.tags || [],
+        bio: profile.bio,
+        location: profile.location,
+        profile, // Keep full profile data
+      }))
+
+      const uniqueDeck = dedupeProfiles(transformed)
+      setDeck(uniqueDeck)
+      logger.info('Recommendations loaded', { count: uniqueDeck.length })
+    } catch (error) {
+      logger.error('Load recommendations error', {
+        error: error?.message || String(error),
+        stack: error?.stack,
+        userId: user?.id,
+        errorDetails: error instanceof Error ? {
+          name: error.name,
+          message: error.message,
+          stack: error.stack,
+        } : error,
+      })
+      Alert.alert('Error', 'Failed to load profiles. Please try again.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const loadMoreRecommendations = async () => {
+    if (loadingMore || !isAuthenticated) return
+
+    setLoadingMore(true)
+    try {
+      const { profiles, error } = await profileService.getRecommendations(25)
+      if (error) throw error
+
+      const transformed = (profiles || []).map((profile) => ({
+        id: profile.id,
+        name: profile.display_name || profile.first_name || 'Unknown',
+        age: profile.age || 25,
+        imageUri: profile.avatar_url ? { uri: profile.avatar_url } : require('./assets/angel.png'),
+        tags: profile.tags || [],
+        bio: profile.bio,
+        location: profile.location,
+        profile,
+      }))
+
+      setDeck((prev) => {
+        const merged = [...prev, ...transformed]
+        const unique = dedupeProfiles(merged)
+        logger.info('More recommendations loaded', { count: unique.length - prev.length })
+        return unique
+      })
+    } catch (error) {
+      logger.error('Load more recommendations error', {
+        error: error?.message || String(error),
+        stack: error?.stack,
+        userId: user?.id,
+        errorDetails: error instanceof Error ? {
+          name: error.name,
+          message: error.message,
+          stack: error.stack,
+        } : error,
+      })
+    } finally {
+      setLoadingMore(false)
+    }
+  }
 
   const pan = useRef(new Animated.ValueXY()).current
   const isAnimating = useRef(false)
@@ -126,9 +246,60 @@ export default function SwipeScreen() {
     })
   }
 
-  const commitSwipe = (type) => {
-    if (isAnimating.current) return
+  const commitSwipe = async (type) => {
+    if (isAnimating.current || !visible[0]) return
     isAnimating.current = true
+
+    const currentProfile = visible[0]
+    const direction = type === 'like' ? 'like' : 'pass'
+
+    // Record swipe in backend
+    if (currentProfile.id && isAuthenticated) {
+      try {
+        const { swipe, isMatch, match, error } = await swipeService.swipe(currentProfile.id, direction)
+        
+        if (error) {
+          logger.error('Swipe recording error', {
+            error: error?.message || String(error),
+            stack: error?.stack,
+            targetId: currentProfile.id,
+            direction,
+            userId: user?.id,
+            errorDetails: error instanceof Error ? {
+              name: error.name,
+              message: error.message,
+              stack: error.stack,
+            } : error,
+          })
+          // Continue with UI even if recording fails
+        }
+
+        // Handle match
+        if (isMatch && match) {
+          Alert.alert(
+            '🎉 It\'s a Match!',
+            `You and ${currentProfile.name} liked each other!`,
+            [
+              { text: 'Keep Swiping', style: 'cancel' },
+              { text: 'Send Message', onPress: () => navigation.navigate('Chats') },
+            ]
+          )
+        }
+      } catch (error) {
+        logger.error('Swipe commit error', {
+          error: error?.message || String(error),
+          stack: error?.stack,
+          targetId: currentProfile.id,
+          direction,
+          userId: user?.id,
+          errorDetails: error instanceof Error ? {
+            name: error.name,
+            message: error.message,
+            stack: error.stack,
+          } : error,
+        })
+      }
+    }
 
     if (type === 'like') {
       setConsecutiveDislikes(0)
@@ -185,7 +356,8 @@ export default function SwipeScreen() {
           // It was a tap, navigate to profile
           const currentProfile = visible[0]
           if (currentProfile) {
-            navigation.navigate('ViewProfile', { profile: currentProfile })
+            logger.info('Profile card tapped (top)', { profileId: currentProfile.id });
+            navigation.navigate('ProfileOfOtherPeople', { profile: currentProfile })
           }
           // Reset pan position
           pan.x.setValue(0)
@@ -211,7 +383,8 @@ export default function SwipeScreen() {
   const handleCardPress = (profile, isTop) => {
     // Non-top cards can always be tapped
     if (!isTop && !isAnimating.current) {
-      navigation.navigate('ViewProfile', { profile })
+      logger.info('Profile card pressed (non-top)', { profileId: profile.id });
+      navigation.navigate('ProfileOfOtherPeople', { profile })
     }
   }
 
@@ -233,6 +406,19 @@ export default function SwipeScreen() {
   })
 
   const topId = visible[0]?.id
+
+  if (loading && deck.length === 0) {
+    return (
+      <View style={styles.container}>
+        <LinearGradient colors={['#E8F6FF', '#F3FAFF']} style={StyleSheet.absoluteFill} />
+        <TopNavBar />
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#5BC0F8" />
+          <Text style={styles.loadingText}>Loading profiles...</Text>
+        </View>
+      </View>
+    )
+  }
 
   return (
     <View style={styles.container}>
@@ -491,4 +677,6 @@ const styles = StyleSheet.create({
   emptyText: { fontSize: 22, color: '#777' },
   actionBar: { position: 'absolute', left: 0, right: 0, bottom: 42, paddingHorizontal: 40, flexDirection: 'row', justifyContent: 'space-around', zIndex: 2000 },
   actionButtonLarge: { width: 90, height: 90, borderRadius: 45, justifyContent: 'center', alignItems: 'center' },
+  loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  loadingText: { marginTop: 16, fontSize: 16, color: '#5BC0F8', fontWeight: '600' },
 });

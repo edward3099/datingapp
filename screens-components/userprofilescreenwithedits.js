@@ -198,7 +198,7 @@ export default function UserProfileScreen() {
               />
             </ScrollView>
             <Pressable style={styles.closeButton} onPress={() => setGalleryVisible(false)}>
-              <AntDesign name="closecircle" size={32} color="#5BC0F8" />
+              <AntDesign name="closecircleo" size={32} color="#5BC0F8" />
             </Pressable>
           </View>
         </View>
