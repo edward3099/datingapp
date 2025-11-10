@@ -26,7 +26,57 @@ npm install
 npm start
 ```
 
+- To expose the dev server over a tunnel (useful for physical devices off your network):
+  ```bash
+  npm run start:tunnel
+  ```
+
+- To print the active tunnel URLs (run after the tunnel server is up):
+  ```bash
+  npm run tunnel:url
+  ```
+
 3. Open the app in Expo Go on your mobile device or use an emulator.
+
+## Testing
+
+The project includes three complementary test layers:
+
+- **Unit & integration (`jest-expo`)**: exercises shared logic and components with React Native Testing Library.
+  ```bash
+  npm test           # run once
+  npm run test:watch # watch mode
+  npm run test:coverage
+  ```
+
+- **Web end-to-end (Playwright)**: drives the Expo web build for universal flows.
+  ```bash
+  npx playwright install --with-deps  # first run only
+  npm run test:playwright             # starts Expo web (port 19006) and executes specs
+  ```
+
+- **Native end-to-end (Detox)**: targets iOS simulators and Android emulators.
+  1. Install native tooling (see [Detox environment setup](https://wix.github.io/Detox/docs/introduction/environment-setup/)):
+     ```bash
+     brew tap wix/brew && brew install applesimutils   # macOS / iOS
+     npm install --global detox-cli
+     ```
+     Create or reuse an Android AVD (e.g. `Pixel_7_API_34`) and ensure the iOS simulator you want (default: **iPhone 15**) is available.
+  2. Build and test:
+     ```bash
+     # iOS
+     npm run detox:build:ios
+     npm run detox:test:ios
+
+     # Android
+     npm run detox:build:android
+     npm run detox:test:android
+
+     # run both platforms
+     npm run test:detox
+     ```
+
+Detox build steps run `expo prebuild` under the hood to materialise native projects. Re-run the corresponding build command whenever native changes are made (for example, after modifying app.json plugins or native modules).
 
 ## Required Assets
 

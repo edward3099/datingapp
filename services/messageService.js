@@ -12,7 +12,24 @@ export const messageService = {
         .single();
 
       if (error) throw error;
-      return { conversation: data, error: null };
+
+      let participants = [];
+      try {
+        const { data: participantRows, error: participantsError } = await supabase
+          .from('conversation_participants')
+          .select('*')
+          .eq('conversation_id', data.id);
+        if (participantsError) throw participantsError;
+        participants = participantRows || [];
+      } catch (participantsError) {
+        logger.warn('Conversation participants fetch error', {
+          error: participantsError?.message || String(participantsError),
+          stack: participantsError?.stack,
+          conversationId: data?.id,
+        });
+      }
+
+      return { conversation: { ...data, participants }, error: null };
     } catch (error) {
       logger.error('Get conversation error', { 
         error: error.message,
@@ -31,18 +48,26 @@ export const messageService = {
 
   // Get or create conversation
   async getOrCreateConversation(matchId) {
+    if (matchId === undefined || matchId === null) {
+      const error = new Error('matchId is required to get or create a conversation');
+      logger.error('Get or create conversation error', { error: error.message, matchId });
+      return { conversation: null, error };
+    }
+
+    const numericMatchId =
+      typeof matchId === 'string' && /^\d+$/.test(matchId) ? Number(matchId) : matchId;
+
     try {
       let { data: conversation, error } = await supabase
         .from('conversations')
         .select('*')
-        .eq('match_id', matchId)
+        .eq('match_id', numericMatchId)
         .single();
 
       if (error && error.code === 'PGRST116') {
-        // Conversation doesn't exist, create it
         const { data: newConversation, error: createError } = await supabase
           .from('conversations')
-          .insert({ match_id: matchId })
+          .insert({ match_id: numericMatchId })
           .select()
           .single();
 
@@ -52,7 +77,25 @@ export const messageService = {
         throw error;
       }
 
-      return { conversation, error: null };
+      let participants = [];
+      if (conversation?.id) {
+        try {
+          const { data: participantRows, error: participantsError } = await supabase
+            .from('conversation_participants')
+            .select('*')
+            .eq('conversation_id', conversation.id);
+          if (participantsError) throw participantsError;
+          participants = participantRows || [];
+        } catch (participantsError) {
+          logger.warn('Conversation participants fetch error', {
+            error: participantsError?.message || String(participantsError),
+            stack: participantsError?.stack,
+            conversationId: conversation?.id,
+          });
+        }
+      }
+
+      return { conversation: conversation ? { ...conversation, participants } : null, error: null };
     } catch (error) {
       logger.error('Get or create conversation error', { 
         error: error.message,
@@ -112,26 +155,25 @@ export const messageService = {
 
   // Send a message
   async sendMessage(conversationId, content, messageType = 'text', attachments = null) {
+    if (conversationId === undefined || conversationId === null) {
+      const error = new Error('conversationId is required to send a message');
+      logger.error('Send message error', { error: error.message, conversationId });
+      return { message: null, error };
+    }
+
+    const normalizedConversationId =
+      typeof conversationId === 'string' && /^\d+$/.test(conversationId)
+        ? Number(conversationId)
+        : conversationId;
+
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
-      // Check rate limit
-      const { data: rateLimit } = await supabase.rpc('check_rate_limit', {
-        p_user_id: user.id,
-        p_action_type: 'message',
-        p_max_actions: 200,
-        p_window_minutes: 60,
-      });
-
-      if (!rateLimit) {
-        return { error: { message: 'Rate limit exceeded. Please slow down.' } };
-      }
-
       const { data, error } = await supabase
         .from('messages')
         .insert({
-          conversation_id: conversationId,
+          conversation_id: normalizedConversationId,
           sender_id: user.id,
           content,
           message_type: messageType,
@@ -142,7 +184,7 @@ export const messageService = {
 
       if (error) throw error;
 
-      logger.info('Message sent', { conversationId, messageId: data.id });
+      logger.info('Message sent', { conversationId: normalizedConversationId, messageId: data.id });
 
       // Trigger push notification via Edge Function
       try {
@@ -165,7 +207,7 @@ export const messageService = {
         error: error.message,
         code: error.code,
         hint: error.hint,
-        conversationId,
+        conversationId: normalizedConversationId ?? conversationId,
         userId: user?.id,
         messageType,
         originalError: error instanceof Error ? {

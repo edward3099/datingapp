@@ -24,25 +24,59 @@ export default function ChatsScreen() {
   const [unreadCounts, setUnreadCounts] = useState({});
 
   useEffect(() => {
-    if (isAuthenticated) {
-      loadMatches().catch((error) => {
-        logger.error('Failed to load matches in useEffect', {
-          error: error?.message || String(error),
-          stack: error?.stack,
-          userId: user?.id,
-        });
+    if (!isAuthenticated) return undefined;
+
+    let unsubscribe;
+    let isMounted = true;
+
+    loadMatches().catch((error) => {
+      logger.error('Failed to load matches in useEffect', {
+        error: error?.message || String(error),
+        stack: error?.stack,
+        userId: user?.id,
       });
+    });
+
+    const setupSubscription = async () => {
       try {
-        subscribeToMatches();
+        const maybeUnsubscribe = await matchService.subscribeToMatches((newMatch) => {
+          if (!isMounted) return;
+          logger.info('New match received via subscription', {
+            matchId: newMatch?.id,
+          });
+          loadMatches().catch((error) => {
+            logger.error('Failed to reload matches after new match', {
+              error: error?.message || String(error),
+              stack: error?.stack,
+            });
+          });
+        });
+
+        if (typeof maybeUnsubscribe === 'function') {
+          unsubscribe = maybeUnsubscribe;
+        }
       } catch (error) {
         logger.error('Failed to subscribe to matches', {
           error: error?.message || String(error),
           stack: error?.stack,
         });
       }
-    }
+    };
+
+    setupSubscription();
+
     return () => {
-      // Cleanup subscriptions
+      isMounted = false;
+      if (typeof unsubscribe === 'function') {
+        try {
+          unsubscribe();
+        } catch (error) {
+          logger.warn('Error during match subscription cleanup', {
+            error: error?.message || String(error),
+            stack: error?.stack,
+          });
+        }
+      }
     };
   }, [isAuthenticated]);
 
@@ -127,7 +161,7 @@ export default function ChatsScreen() {
             source={
               otherUser?.avatar_url
                 ? { uri: otherUser.avatar_url }
-                : require('./assets/angel.png')
+                : require('./assets/no-image-available.png')
             }
             style={styles.avatar}
           />

@@ -76,6 +76,97 @@ export const matchService = {
     }
   },
 
+  // Get users who liked the current user (inbound likes)
+  async getInboundLikes(limit = 40) {
+    let userId = null;
+    try {
+      const {
+        data: { user },
+        error: authError,
+      } = await supabase.auth.getUser();
+
+      if (authError) throw authError;
+      if (!user) throw new Error('Not authenticated');
+      userId = user.id;
+
+      const { data, error } = await supabase
+        .from('swipes')
+        .select(
+          `
+            id,
+            swiper_id,
+            target_id,
+            created_at,
+            direction,
+            swiper_profile:profiles!swipes_swiper_id_fkey (
+              id,
+              display_name,
+              first_name,
+              avatar_url,
+              age,
+              location,
+              bio,
+              tags
+            )
+          `
+        )
+        .eq('target_id', user.id)
+        .eq('direction', 'like')
+        .order('created_at', { ascending: false })
+        .limit(limit);
+
+      if (error) throw error;
+
+      const seen = new Set();
+      const likes = [];
+
+      (data || []).forEach((entry) => {
+        const likerId = entry?.swiper_id;
+        if (!likerId || seen.has(likerId)) return;
+        seen.add(likerId);
+
+        const profile = { ...(entry?.swiper_profile || {}) };
+        if (!profile.id && likerId) {
+          profile.id = likerId;
+        }
+        likes.push({
+          id: entry?.id ?? `${likerId}-${entry?.created_at}`,
+          likerId,
+          created_at: entry?.created_at,
+          profile: {
+            id: profile?.id || likerId,
+            display_name: profile?.display_name || null,
+            first_name: profile?.first_name || null,
+            avatar_url: profile?.avatar_url || null,
+            age: profile?.age ?? null,
+            location: profile?.location || null,
+            bio: profile?.bio || null,
+            tags: profile?.tags || [],
+          },
+        });
+      });
+
+      return { likes, error: null };
+    } catch (error) {
+      logger.error('Get inbound likes error', {
+        error: error?.message || String(error),
+        code: error?.code,
+        hint: error?.hint,
+        userId,
+        limit,
+        originalError:
+          error instanceof Error
+            ? {
+                name: error.name,
+                message: error.message,
+                stack: error.stack?.split('\n').slice(0, 10).join('\n'),
+              }
+            : error,
+      });
+      return { likes: [], error };
+    }
+  },
+
   // Get match details
   async getMatch(matchId) {
     try {
@@ -160,29 +251,52 @@ export const matchService = {
   },
 
   // Listen to new matches (Realtime)
-  subscribeToMatches(callback) {
-    const { data: { user } } = supabase.auth.getUser();
-    if (!user) return null;
+  async subscribeToMatches(callback) {
+    try {
+      const { data, error } = await supabase.auth.getUser();
+      if (error) throw error;
 
-    const channel = supabase
-      .channel('matches')
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'matches',
-          filter: `or(user_a.eq.${user.id},user_b.eq.${user.id})`,
-        },
-        (payload) => {
-          callback(payload.new);
-        }
-      )
-      .subscribe();
+      const user = data?.user;
+      if (!user) {
+        logger.warn('subscribeToMatches called without authenticated user');
+        return null;
+      }
 
-    return () => {
-      supabase.removeChannel(channel);
-    };
+      const channel = supabase
+        .channel('matches')
+        .on(
+          'postgres_changes',
+          {
+            event: 'INSERT',
+            schema: 'public',
+            table: 'matches',
+            filter: `or(user_a.eq.${user.id},user_b.eq.${user.id})`,
+          },
+          (payload) => {
+            try {
+              callback(payload.new);
+            } catch (callbackError) {
+              logger.error('Match subscription callback error', {
+                error: callbackError?.message || String(callbackError),
+                stack: callbackError?.stack,
+              });
+            }
+          }
+        )
+        .subscribe((status) => {
+          logger.debug?.('Match subscription status', { status });
+        });
+
+      return () => {
+        supabase.removeChannel(channel);
+      };
+    } catch (error) {
+      logger.error('Failed to subscribe to matches', {
+        error: error?.message || String(error),
+        stack: error?.stack,
+      });
+      return null;
+    }
   },
 };
 

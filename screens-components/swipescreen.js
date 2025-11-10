@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState, useEffect } from 'react'
+import React, { useMemo, useRef, useState, useEffect, useCallback } from 'react'
 import {
   View,
   StyleSheet,
@@ -9,9 +9,14 @@ import {
   PanResponder,
   Animated,
   Easing,
-  TouchableWithoutFeedback,
   ActivityIndicator,
   Alert,
+  Platform,
+  Modal,
+  TouchableWithoutFeedback,
+  ScrollView,
+  TextInput,
+  Switch,
 } from 'react-native'
 import { LinearGradient } from 'expo-linear-gradient'
 import { BlurView } from 'expo-blur'
@@ -22,6 +27,8 @@ import { profileService } from '../services/profileService'
 import { swipeService } from '../services/swipeService'
 import { logger } from '../utils/logger'
 import TopNavBar from '../components/TopNavBar'
+import MatchCelebration from '../components/MatchCelebration'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
 const { width: SCREEN_W } = Dimensions.get('window')
 
@@ -31,8 +38,10 @@ const CARD_W = Math.min(SCREEN_W - SIDE_PADDING, MAX_CARD_W)
 const CARD_H = Math.max(560, Math.min(720, Math.round(CARD_W * 1.55)))
 const CARD_TOP_OFFSET = 120
 
-const SWIPE_DISTANCE = 140
-const SWIPE_VELOCITY = 0.22
+const SWIPE_DISTANCE = Math.max(CARD_W * 0.28, 90)
+const SWIPE_VELOCITY = 0.18
+const TAP_MAX_DISTANCE = 8
+const TAP_MAX_DURATION = 200
 
 const colours = {
   heart: '#A020F0',
@@ -61,13 +70,224 @@ const dedupeProfiles = (profiles) => {
   });
 };
 
+const DEFAULT_FILTERS = {
+  gender: 'any',
+  minAge: 18,
+  maxAge: 60,
+  interests: [],
+  hasPhoto: false,
+  location: '',
+};
+
+const toDraftFilters = (filterState) => ({
+  gender: filterState.gender,
+  minAge: String(filterState.minAge),
+  maxAge: String(filterState.maxAge),
+  interests: [...filterState.interests],
+  hasPhoto: filterState.hasPhoto,
+  location: filterState.location,
+});
+
+const FILTER_TAG_OPTIONS = [
+  'music',
+  'art',
+  'travel',
+  'sports',
+  'tech',
+  'books',
+  'fashion',
+  'pets',
+  'film',
+  'fitness',
+];
+
+const MAX_FILTER_INTERESTS = 3;
+
 export default function SwipeScreen() {
   const navigation = useNavigation()
   const { user, isAuthenticated } = useAuth()
+  const insets = useSafeAreaInsets()
   const [deck, setDeck] = useState([])
   const [loading, setLoading] = useState(true)
   const [loadingMore, setLoadingMore] = useState(false)
-  const visible = useMemo(() => deck.slice(0, 3), [deck])
+  const [filters, setFilters] = useState({ ...DEFAULT_FILTERS })
+  const [filterModalVisible, setFilterModalVisible] = useState(false)
+  const [draftFilters, setDraftFilters] = useState(toDraftFilters(DEFAULT_FILTERS))
+  const [matchCelebration, setMatchCelebration] = useState(null)
+
+  const applyRelationshipFilter = useCallback(
+    (profiles) => {
+      if (!profiles?.length) return []
+      return profiles.filter((profile) => {
+        if (!profile) return false
+
+        const profileGender = String(
+          profile.gender ||
+            profile.profile?.gender ||
+            profile.profile?.gender_identity ||
+            profile.profile?.preferred_gender ||
+            profile.user?.gender ||
+            ''
+        ).toLowerCase()
+
+        if (filters.gender !== 'any') {
+          if (!profileGender || profileGender !== filters.gender) {
+            return false
+          }
+        }
+
+        const profileAgeRaw =
+          profile.age ??
+          profile.profile?.age ??
+          (typeof profile.profile?.birth_year === 'number'
+            ? new Date().getFullYear() - profile.profile.birth_year
+            : null)
+
+        if (typeof profileAgeRaw === 'number' && Number.isFinite(profileAgeRaw)) {
+          if (profileAgeRaw < filters.minAge) return false
+          if (profileAgeRaw > filters.maxAge) return false
+        }
+
+        if (filters.hasPhoto) {
+          const hasPhoto =
+            !!profile.imageUri?.uri ||
+            !!profile.avatar_url ||
+            !!profile.profile?.avatar_url ||
+            !!profile.profile?.photo_url ||
+            !!profile.profile?.photo
+
+          if (!hasPhoto) return false
+        }
+
+        if (filters.interests.length) {
+          const profileTagsRaw =
+            profile.tags ||
+            profile.profile?.tags ||
+            profile.profile?.interests ||
+            profile.metadata?.tags ||
+            []
+
+          const normalizedTags = Array.isArray(profileTagsRaw)
+            ? profileTagsRaw
+                .map((tag) =>
+                  typeof tag === 'string'
+                    ? tag.trim().toLowerCase()
+                    : typeof tag?.slug === 'string'
+                    ? tag.slug.trim().toLowerCase()
+                    : null
+                )
+                .filter(Boolean)
+            : []
+
+          const hasInterestMatch = normalizedTags.some((tag) => filters.interests.includes(tag))
+          if (!hasInterestMatch) return false
+        }
+
+        const trimmedLocation = (filters.location ?? '').trim().toLowerCase()
+        if (trimmedLocation.length) {
+          const profileLocation =
+            profile.location ||
+            profile.profile?.location ||
+            profile.metadata?.location ||
+            ''
+
+          const normalizedLocation = typeof profileLocation === 'string' ? profileLocation.trim().toLowerCase() : ''
+          if (!normalizedLocation.includes(trimmedLocation)) {
+            return false
+          }
+        }
+
+        return true
+      })
+    },
+    [filters]
+  )
+
+  const filteredDeck = useMemo(() => applyRelationshipFilter(deck), [deck, applyRelationshipFilter])
+  const visible = useMemo(() => filteredDeck.slice(0, 3), [filteredDeck])
+
+  const openFilterModal = useCallback(() => {
+    setDraftFilters(toDraftFilters(filters))
+    setFilterModalVisible(true)
+  }, [filters])
+
+  const closeFilterModal = useCallback(() => {
+    setFilterModalVisible(false)
+  }, [])
+
+  const handleDraftGenderSelect = useCallback((value) => {
+    setDraftFilters((prev) => ({ ...prev, gender: value }))
+  }, [])
+
+  const handleDraftMinAgeChange = useCallback((value) => {
+    const numeric = value.replace(/[^0-9]/g, '')
+    setDraftFilters((prev) => ({ ...prev, minAge: numeric }))
+  }, [])
+
+  const handleDraftMaxAgeChange = useCallback((value) => {
+    const numeric = value.replace(/[^0-9]/g, '')
+    setDraftFilters((prev) => ({ ...prev, maxAge: numeric }))
+  }, [])
+
+  const toggleDraftInterest = useCallback((tag) => {
+    const normalized = tag.toLowerCase()
+    setDraftFilters((prev) => {
+      const alreadySelected = prev.interests.includes(normalized)
+      if (alreadySelected) {
+        return { ...prev, interests: prev.interests.filter((t) => t !== normalized) }
+      }
+      if (prev.interests.length >= MAX_FILTER_INTERESTS) {
+        return prev
+      }
+      return { ...prev, interests: [...prev.interests, normalized] }
+    })
+  }, [])
+
+  const handleToggleHasPhoto = useCallback((value) => {
+    setDraftFilters((prev) => ({ ...prev, hasPhoto: value }))
+  }, [])
+
+  const handleDraftLocationChange = useCallback((value) => {
+    setDraftFilters((prev) => ({ ...prev, location: value }))
+  }, [])
+
+  const handleApplyFilters = useCallback(() => {
+    const parsedMin = parseInt(draftFilters.minAge, 10)
+    const parsedMax = parseInt(draftFilters.maxAge, 10)
+
+    let sanitizedMin = Number.isNaN(parsedMin) ? DEFAULT_FILTERS.minAge : parsedMin
+    let sanitizedMax = Number.isNaN(parsedMax) ? DEFAULT_FILTERS.maxAge : parsedMax
+
+    sanitizedMin = Math.max(18, Math.min(99, sanitizedMin))
+    sanitizedMax = Math.max(18, Math.min(99, sanitizedMax))
+
+    if (sanitizedMax < sanitizedMin) {
+      sanitizedMax = sanitizedMin
+    }
+
+    const sanitizedLocation = (draftFilters.location ?? '').trim()
+
+    setFilters({
+      gender: draftFilters.gender,
+      minAge: sanitizedMin,
+      maxAge: sanitizedMax,
+      interests: [...draftFilters.interests],
+      hasPhoto: draftFilters.hasPhoto,
+      location: sanitizedLocation,
+    })
+    setFilterModalVisible(false)
+  }, [draftFilters])
+
+  const handleResetFilters = useCallback(() => {
+    setFilters({ ...DEFAULT_FILTERS })
+    setDraftFilters(toDraftFilters(DEFAULT_FILTERS))
+    setFilterModalVisible(false)
+  }, [])
+
+  const filterTop = useMemo(
+    () => (Platform.OS === 'ios' ? Math.max(insets.top + 6, 46) : Math.max(insets.top + 8, 10)),
+    [insets.top]
+  )
 
   // Load recommendations on mount and when deck is low
   useEffect(() => {
@@ -84,7 +304,7 @@ export default function SwipeScreen() {
 
   // Load more when deck is low
   useEffect(() => {
-    if (deck.length <= 3 && !loadingMore && isAuthenticated) {
+    if ((deck.length <= 3 || filteredDeck.length <= 3) && !loadingMore && isAuthenticated) {
       loadMoreRecommendations().catch((error) => {
         logger.error('Failed to load more recommendations in useEffect', {
           error: error?.message || String(error),
@@ -93,7 +313,7 @@ export default function SwipeScreen() {
         })
       })
     }
-  }, [deck.length])
+  }, [deck.length, filteredDeck.length])
 
   const loadRecommendations = async () => {
     if (!isAuthenticated) return
@@ -104,16 +324,58 @@ export default function SwipeScreen() {
       if (error) throw error
 
       // Transform profiles to match card format
-      const transformed = (profiles || []).map((profile) => ({
-        id: profile.id,
-        name: profile.display_name || profile.first_name || 'Unknown',
-        age: profile.age || 25,
-        imageUri: profile.avatar_url ? { uri: profile.avatar_url } : require('./assets/angel.png'),
-        tags: profile.tags || [],
-        bio: profile.bio,
-        location: profile.location,
-        profile, // Keep full profile data
-      }))
+      const transformed = (profiles || []).map((profile) => {
+        const resolvedName =
+          profile.display_name ||
+          profile.first_name ||
+          profile.full_name ||
+          profile.preferred_name ||
+          profile.nickname ||
+          profile.nick_name ||
+          profile.handle ||
+          profile.user_name ||
+          profile.given_name ||
+          profile.name ||
+          profile.last_name ||
+          (profile.profile &&
+            (profile.profile.display_name ||
+              profile.profile.first_name ||
+              profile.profile.full_name ||
+              profile.profile.preferred_name ||
+              profile.profile.nickname ||
+              profile.profile.name)) ||
+          (profile.metadata &&
+            (profile.metadata.display_name ||
+              profile.metadata.first_name ||
+              profile.metadata.full_name ||
+              profile.metadata.name)) ||
+          (profile.public_profile &&
+            (profile.public_profile.display_name ||
+              profile.public_profile.first_name ||
+              profile.public_profile.full_name)) ||
+          (profile.user && (profile.user.display_name || profile.user.full_name || profile.user.email)) ||
+          (profile.email ? profile.email.split('@')[0] : null) ||
+          'Match';
+
+        return {
+          id: profile.id,
+          name: resolvedName,
+          age: profile.age || profile.profile?.age || 25,
+          imageUri: profile.avatar_url
+            ? { uri: profile.avatar_url }
+            : profile.profile?.avatar_url
+            ? { uri: profile.profile.avatar_url }
+            : require('./assets/no-image-available.png'),
+          tags: profile.tags || profile.profile?.tags || [],
+          bio: profile.bio || profile.profile?.bio,
+          location: profile.location || profile.profile?.location,
+          profile: {
+            ...profile,
+            compatibility_metrics: profile.compatibility_metrics || profile.metrics || null,
+          },
+        };
+      })
+        .filter((card) => card.id && typeof card.name === 'string' && card.name.trim().length > 0);
 
       const uniqueDeck = dedupeProfiles(transformed)
       setDeck(uniqueDeck)
@@ -143,19 +405,62 @@ export default function SwipeScreen() {
       const { profiles, error } = await profileService.getRecommendations(25)
       if (error) throw error
 
-      const transformed = (profiles || []).map((profile) => ({
-        id: profile.id,
-        name: profile.display_name || profile.first_name || 'Unknown',
-        age: profile.age || 25,
-        imageUri: profile.avatar_url ? { uri: profile.avatar_url } : require('./assets/angel.png'),
-        tags: profile.tags || [],
-        bio: profile.bio,
-        location: profile.location,
-        profile,
-      }))
+      const transformed = (profiles || []).map((profile) => {
+        const resolvedName =
+          profile.display_name ||
+          profile.first_name ||
+          profile.full_name ||
+          profile.preferred_name ||
+          profile.nickname ||
+          profile.nick_name ||
+          profile.handle ||
+          profile.user_name ||
+          profile.given_name ||
+          profile.name ||
+          profile.last_name ||
+          (profile.profile &&
+            (profile.profile.display_name ||
+              profile.profile.first_name ||
+              profile.profile.full_name ||
+              profile.profile.preferred_name ||
+              profile.profile.nickname ||
+              profile.profile.name)) ||
+          (profile.metadata &&
+            (profile.metadata.display_name ||
+              profile.metadata.first_name ||
+              profile.metadata.full_name ||
+              profile.metadata.name)) ||
+          (profile.public_profile &&
+            (profile.public_profile.display_name ||
+              profile.public_profile.first_name ||
+              profile.public_profile.full_name)) ||
+          (profile.user && (profile.user.display_name || profile.user.full_name || profile.user.email)) ||
+          (profile.email ? profile.email.split('@')[0] : null) ||
+          'Match';
+
+        return {
+          id: profile.id,
+          name: resolvedName,
+          age: profile.age || profile.profile?.age || 25,
+          imageUri: profile.avatar_url
+            ? { uri: profile.avatar_url }
+            : profile.profile?.avatar_url
+            ? { uri: profile.profile.avatar_url }
+            : require('./assets/no-image-available.png'),
+          tags: profile.tags || profile.profile?.tags || [],
+          bio: profile.bio || profile.profile?.bio,
+          location: profile.location || profile.profile?.location,
+          profile: {
+            ...profile,
+            compatibility_metrics: profile.compatibility_metrics || profile.metrics || null,
+          },
+        };
+      })
+        .filter((card) => card.id && typeof card.name === 'string' && card.name.trim().length > 0);
 
       setDeck((prev) => {
-        const merged = [...prev, ...transformed]
+        const filtered = applyRelationshipFilter(transformed)
+        const merged = [...prev, ...filtered]
         const unique = dedupeProfiles(merged)
         logger.info('More recommendations loaded', { count: unique.length - prev.length })
         return unique
@@ -196,8 +501,8 @@ export default function SwipeScreen() {
   const animateTap = (v) => {
     v.setValue(1)
     Animated.sequence([
-      Animated.timing(v, { toValue: 0.94, duration: 80, easing: Easing.out(Easing.quad), useNativeDriver: true }),
-      Animated.spring(v, { toValue: 1, useNativeDriver: true, speed: 20, bounciness: 6 }),
+      Animated.timing(v, { toValue: 0.94, duration: 80, easing: Easing.out(Easing.quad), useNativeDriver: false }),
+      Animated.spring(v, { toValue: 1, useNativeDriver: false, speed: 20, bounciness: 6 }),
     ]).start()
   }
 
@@ -222,9 +527,9 @@ export default function SwipeScreen() {
     toastAnim.stopAnimation()
     toastAnim.setValue(0)
     Animated.sequence([
-      Animated.timing(toastAnim, { toValue: 1, duration: 160, useNativeDriver: true }),
+      Animated.timing(toastAnim, { toValue: 1, duration: 160, useNativeDriver: false }),
       Animated.delay(900),
-      Animated.timing(toastAnim, { toValue: 0, duration: 200, useNativeDriver: true }),
+      Animated.timing(toastAnim, { toValue: 0, duration: 200, useNativeDriver: false }),
     ]).start(() => {
       setToastText(null)
       setTimeout(playNextToast, 40)
@@ -235,71 +540,33 @@ export default function SwipeScreen() {
   const pick = (arr) => arr[Math.floor(Math.random() * arr.length)]
 
   const flingOff = (dir, done) => {
+    pan.stopAnimation()
     Animated.timing(pan, {
       toValue: { x: dir * (SCREEN_W + 240), y: 0 },
       duration: 360,
       easing: Easing.out(Easing.quad),
-      useNativeDriver: true,
+      useNativeDriver: false,
     }).start(() => {
       pan.setValue({ x: 0, y: 0 })
       if (done) done()
     })
   }
 
-  const commitSwipe = async (type) => {
+  const commitSwipe = (type) => {
     if (isAnimating.current || !visible[0]) return
     isAnimating.current = true
 
     const currentProfile = visible[0]
     const direction = type === 'like' ? 'like' : 'pass'
 
-    // Record swipe in backend
-    if (currentProfile.id && isAuthenticated) {
-      try {
-        const { swipe, isMatch, match, error } = await swipeService.swipe(currentProfile.id, direction)
-        
-        if (error) {
-          logger.error('Swipe recording error', {
-            error: error?.message || String(error),
-            stack: error?.stack,
-            targetId: currentProfile.id,
-            direction,
-            userId: user?.id,
-            errorDetails: error instanceof Error ? {
-              name: error.name,
-              message: error.message,
-              stack: error.stack,
-            } : error,
-          })
-          // Continue with UI even if recording fails
-        }
-
-        // Handle match
-        if (isMatch && match) {
-          Alert.alert(
-            '🎉 It\'s a Match!',
-            `You and ${currentProfile.name} liked each other!`,
-            [
-              { text: 'Keep Swiping', style: 'cancel' },
-              { text: 'Send Message', onPress: () => navigation.navigate('Chats') },
-            ]
-          )
-        }
-      } catch (error) {
-        logger.error('Swipe commit error', {
-          error: error?.message || String(error),
-          stack: error?.stack,
-          targetId: currentProfile.id,
-          direction,
-          userId: user?.id,
-          errorDetails: error instanceof Error ? {
-            name: error.name,
-            message: error.message,
-            stack: error.stack,
-          } : error,
-        })
-      }
-    }
+    const dir = type === 'like' ? 1 : -1
+    flingOff(dir, () => {
+      setDeck((prev) => prev.filter((profile) => profile.id !== currentProfile.id))
+      requestAnimationFrame(() => {
+        isAnimating.current = false
+        isSwiping.current = false
+      })
+    })
 
     if (type === 'like') {
       setConsecutiveDislikes(0)
@@ -311,81 +578,120 @@ export default function SwipeScreen() {
       if (next >= 3) setConsecutiveDislikes(0)
     }
 
-    const dir = type === 'like' ? 1 : -1
-    flingOff(dir, () => {
-      setDeck((prev) => prev.slice(1))
-      requestAnimationFrame(() => (isAnimating.current = false))
-    })
+    if (currentProfile.id && isAuthenticated) {
+      swipeService
+        .swipe(currentProfile.id, direction)
+        .then(({ swipe, isMatch, match, error }) => {
+          if (error) {
+            logger.error('Swipe recording error', {
+              error: error?.message || String(error),
+              stack: error?.stack,
+              targetId: currentProfile.id,
+              direction,
+              userId: user?.id,
+              errorDetails: error instanceof Error
+                ? {
+                    name: error.name,
+                    message: error.message,
+                    stack: error.stack,
+                  }
+                : error,
+            })
+            return
+          }
+
+          if (isMatch && match) {
+            setMatchCelebration({
+              name: currentProfile.name || 'Your match',
+              profileId: currentProfile.id,
+            })
+          }
+        })
+        .catch((error) => {
+          logger.error('Swipe commit error', {
+            error: error?.message || String(error),
+            stack: error?.stack,
+            targetId: currentProfile.id,
+            direction,
+            userId: user?.id,
+            errorDetails: error instanceof Error
+              ? {
+                  name: error.name,
+                  message: error.message,
+                  stack: error.stack,
+                }
+              : error,
+          })
+        })
+    }
   }
 
   const panStartTime = useRef(0)
-  const hasMoved = useRef(false)
 
-  const panResponder = useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponder: () => {
+  const panResponder = useMemo(() => PanResponder.create({
+    onStartShouldSetPanResponder: () => !isAnimating.current,
+    onMoveShouldSetPanResponder: (evt, g) => {
+      if (isAnimating.current) return false
+      const movedEnough = Math.abs(g.dx) > 5 || Math.abs(g.dy) > 5
+      if (!movedEnough) return false
+      isSwiping.current = true
+      return true
+    },
+    onPanResponderGrant: () => {
+      panStartTime.current = Date.now()
+      pan.stopAnimation()
+    },
+    onPanResponderMove: (evt, gesture) => {
+      if (isAnimating.current) return
+      isSwiping.current = true
+      Animated.event([null, { dx: pan.x, dy: pan.y }], { useNativeDriver: false })(evt, gesture)
+    },
+    onPanResponderRelease: (e, g) => {
+      if (isAnimating.current) return
+      
+      const moveDistance = Math.sqrt(g.dx * g.dx + g.dy * g.dy)
+      const timeElapsed = Date.now() - panStartTime.current
+
+      // Check if it was a swipe
+      const horizontalIntent = Math.abs(g.dx) > SWIPE_DISTANCE
+      const velocityIntent =
+        Math.abs(g.vx) > SWIPE_VELOCITY && Math.abs(g.dx) > SWIPE_DISTANCE * 0.45
+      const intent = horizontalIntent || velocityIntent
+      logger.info('Pan release evaluated', {
+        profileId: visible[0]?.id,
+        moveDistance,
+        timeElapsed,
+        intent,
+        velocityX: g.vx,
+        deltaX: g.dx,
+        isSwiping: isSwiping.current,
+      })
+      if (intent) {
+        commitSwipe(g.dx > 0 ? 'like' : 'dislike')
+      } else {
+        // Small movement, spring back
+        Animated.spring(pan, { toValue: { x: 0, y: 0 }, useNativeDriver: false, speed: 16, bounciness: 7 }).start(() => {
+          isSwiping.current = false
+        })
+        if (visible[0] && moveDistance <= TAP_MAX_DISTANCE && timeElapsed <= TAP_MAX_DURATION) {
+          isSwiping.current = false
+          handleCardPress(visible[0], 'top-card')
+        }
+      }
+      if (!intent) {
         isSwiping.current = false
-        hasMoved.current = false
-        panStartTime.current = Date.now()
-        return !isAnimating.current
-      },
-      onMoveShouldSetPanResponder: (evt, g) => {
-        if (!isAnimating.current && (Math.abs(g.dx) > 5 || Math.abs(g.dy) > 5)) {
-          hasMoved.current = true
-          isSwiping.current = true
-          return true
-        }
-        return false
-      },
-      onPanResponderMove: (evt, gesture) => {
-        if (isAnimating.current) return
-        hasMoved.current = true
-        isSwiping.current = true
-        Animated.event([null, { dx: pan.x, dy: pan.y }], { useNativeDriver: false })(evt, gesture)
-      },
-      onPanResponderRelease: (e, g) => {
-        if (isAnimating.current) return
-        
-        const moveDistance = Math.sqrt(g.dx * g.dx + g.dy * g.dy)
-        const timeElapsed = Date.now() - panStartTime.current
-        
-        // Detect tap: very small movement, short duration, and no significant movement detected
-        const wasTap = moveDistance < 8 && timeElapsed < 250 && !hasMoved.current
-        
-        if (wasTap) {
-          // It was a tap, navigate to profile
-          const currentProfile = visible[0]
-          if (currentProfile) {
-            logger.info('Profile card tapped (top)', { profileId: currentProfile.id });
-            navigation.navigate('ProfileOfOtherPeople', { profile: currentProfile })
-          }
-          // Reset pan position
-          pan.x.setValue(0)
-          pan.y.setValue(0)
-          return
-        }
-        
-        // Check if it was a swipe
-        const intent = Math.abs(g.dx) > SWIPE_DISTANCE || (Math.abs(g.vx) > SWIPE_VELOCITY && Math.abs(g.dx) > 60)
-        if (intent) {
-          commitSwipe(g.dx > 0 ? 'like' : 'dislike')
-        } else {
-          // Small movement, spring back
-          Animated.spring(pan, { toValue: { x: 0, y: 0 }, useNativeDriver: true, speed: 16, bounciness: 7 }).start(() => {
-            isSwiping.current = false
-          })
-        }
-      },
-      onPanResponderTerminationRequest: () => false,
-    })
-  ).current
+      }
+    },
+    onPanResponderTerminationRequest: () => false,
+  }), [visible, pan])
 
-  const handleCardPress = (profile, isTop) => {
-    // Non-top cards can always be tapped
-    if (!isTop && !isAnimating.current) {
-      logger.info('Profile card pressed (non-top)', { profileId: profile.id });
-      navigation.navigate('ProfileOfOtherPeople', { profile })
-    }
+  const handleCardPress = (profile, source = 'top-card') => {
+    if (isAnimating.current) return
+
+    if (isSwiping.current) return
+
+    logger.info('Profile card pressed', { profileId: profile.id, source })
+    navigation.navigate('ProfileOfOtherPeople', { profile })
   }
 
   const rotateZ = pan.x.interpolate({
@@ -407,10 +713,13 @@ export default function SwipeScreen() {
 
   const topId = visible[0]?.id
 
-  if (loading && deck.length === 0) {
+  if (loading && filteredDeck.length === 0) {
     return (
       <View style={styles.container}>
         <LinearGradient colors={['#E8F6FF', '#F3FAFF']} style={StyleSheet.absoluteFill} />
+        <Pressable onPress={openFilterModal} style={[styles.filterTag, { top: filterTop }]}>
+          <Text style={styles.filterTagText}>filter</Text>
+        </Pressable>
         <TopNavBar />
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color="#5BC0F8" />
@@ -423,6 +732,9 @@ export default function SwipeScreen() {
   return (
     <View style={styles.container}>
       <LinearGradient colors={['#E8F6FF', '#F3FAFF']} style={StyleSheet.absoluteFill} />
+      <Pressable onPress={openFilterModal} style={[styles.filterTag, { top: filterTop }]}>
+        <Text style={styles.filterTagText}>filter</Text>
+      </Pressable>
       <TopNavBar />
 
       <View style={[styles.deckContainer, { paddingTop: 110 }]} pointerEvents="box-none">
@@ -436,29 +748,48 @@ export default function SwipeScreen() {
             const rotZ = isTop ? '0deg' : `${(i - 1) * 2.2 - 1.6}deg`
             return (
               <View key={profile.id} style={{ ...styles.cardWrapper, zIndex, top: CARD_TOP_OFFSET }} pointerEvents="box-none">
-                {!isTop ? (
-                  <Pressable onPress={() => handleCardPress(profile, isTop)}>
-                    <Animated.View
-                      style={{ ...styles.cardContainer, transform: [{ translateY }, { translateX }, { scale }, { rotate: rotZ }] }}
-                    >
-                      <Card profile={profile} isTop={isTop} pan={null} />
-                    </Animated.View>
-                  </Pressable>
-                ) : (
+                {isTop ? (
                   <Animated.View
                     {...panResponder.panHandlers}
-                    style={
-                      { ...styles.cardContainer, transform: [{ translateX: pan.x }, { translateY: pan.y }, { rotateZ }, { perspective: 1000 }, { rotateX: tiltX }, { rotateY: tiltY }] }
-                    }
+                    style={{
+                      ...styles.cardContainer,
+                      transform: [
+                        { translateX: pan.x },
+                        { translateY: pan.y },
+                        { rotateZ },
+                        { perspective: 1000 },
+                        { rotateX: tiltX },
+                        { rotateY: tiltY },
+                      ],
+                    }}
                   >
-                    <Card profile={profile} isTop={isTop} pan={pan} />
+                    <Pressable style={{ flex: 1 }} onPress={() => handleCardPress(profile, 'top-card')}>
+                      <Card profile={profile} isTop={isTop} pan={pan} />
+                    </Pressable>
+                  </Animated.View>
+                ) : (
+                  <Animated.View
+                    style={{ ...styles.cardContainer, transform: [{ translateY }, { translateX }, { scale }, { rotate: rotZ }] }}
+                  >
+                    <Pressable style={{ flex: 1 }} onPress={() => handleCardPress(profile, 'stack-card')}>
+                      <Card profile={profile} isTop={isTop} pan={null} />
+                    </Pressable>
                   </Animated.View>
                 )}
               </View>
             )
           })
         ) : (
-          <Text style={styles.emptyText}>no more profiles!</Text>
+          <View style={styles.emptyState}>
+            <Text style={styles.emptyTitle}>
+              {deck.length === 0 ? 'No more profiles right now' : 'No profiles match your filters'}
+            </Text>
+            <Text style={styles.emptySubtitle}>
+              {deck.length === 0
+                ? 'Check back in a bit—new matches are on the way.'
+                : 'Try widening your filters or clearing them to discover more people.'}
+            </Text>
+          </View>
         )}
       </View>
 
@@ -481,6 +812,140 @@ export default function SwipeScreen() {
           </Pressable>
         </View>
       )}
+
+      <MatchCelebration
+        visible={!!matchCelebration}
+        name={
+          matchCelebration?.name ??
+          (matchCelebration?.profileId
+            ? visible.find((p) => p.id === matchCelebration.profileId)?.name
+            : undefined)
+        }
+        onContinue={() => setMatchCelebration(null)}
+        onMessage={() => {
+          setMatchCelebration(null)
+          navigation.navigate('Messages')
+        }}
+      />
+
+      <Modal visible={filterModalVisible} animationType="fade" transparent>
+        <View style={styles.modalRoot}>
+          <TouchableWithoutFeedback onPress={closeFilterModal}>
+            <View style={styles.modalBackdrop} />
+          </TouchableWithoutFeedback>
+          <View style={styles.filterModal}>
+            <Text style={styles.filterTitle}>Filters</Text>
+            <Text style={styles.filterSubtitle}>Fine-tune who appears in your deck.</Text>
+            <ScrollView
+              style={styles.filterScroll}
+              contentContainerStyle={styles.filterContent}
+              showsVerticalScrollIndicator={false}
+            >
+              <View style={styles.filterSection}>
+                <Text style={styles.sectionLabel}>Show me</Text>
+                <View style={styles.chipRow}>
+                  {['any', 'female', 'male', 'other'].map((option) => {
+                    const active = draftFilters.gender === option
+                    return (
+                      <Pressable
+                        key={option}
+                        onPress={() => handleDraftGenderSelect(option)}
+                        style={[styles.chip, active && styles.chipActive]}
+                      >
+                        <Text style={[styles.chipText, active && styles.chipTextActive]}>{option}</Text>
+                      </Pressable>
+                    )
+                  })}
+                </View>
+              </View>
+
+              <View style={styles.filterSection}>
+                <Text style={styles.sectionLabel}>Age range</Text>
+                <View style={styles.ageRow}>
+                  <View style={styles.ageField}>
+                    <Text style={styles.ageLabel}>Min</Text>
+                    <TextInput
+                      value={draftFilters.minAge}
+                      onChangeText={handleDraftMinAgeChange}
+                      keyboardType="number-pad"
+                      style={styles.ageInput}
+                      maxLength={2}
+                      placeholder="18"
+                      placeholderTextColor="#8EA1B8"
+                    />
+                  </View>
+                  <Text style={styles.ageSeparator}>to</Text>
+                  <View style={styles.ageField}>
+                    <Text style={styles.ageLabel}>Max</Text>
+                    <TextInput
+                      value={draftFilters.maxAge}
+                      onChangeText={handleDraftMaxAgeChange}
+                      keyboardType="number-pad"
+                      style={styles.ageInput}
+                      maxLength={2}
+                      placeholder="60"
+                      placeholderTextColor="#8EA1B8"
+                    />
+                  </View>
+                </View>
+              </View>
+
+              <View style={styles.filterSection}>
+                <View style={styles.toggleRow}>
+                  <Text style={styles.sectionLabel}>Only show profiles with photos</Text>
+                  <Switch value={draftFilters.hasPhoto} onValueChange={handleToggleHasPhoto} thumbColor="#fff" trackColor={{ false: '#CBD5E1', true: '#5BC0F8' }} />
+                </View>
+              </View>
+
+            <View style={styles.filterSection}>
+              <Text style={styles.sectionLabel}>Location</Text>
+              <Text style={styles.sectionHint}>Enter a city or country to prioritise nearby matches.</Text>
+              <TextInput
+                value={draftFilters.location}
+                onChangeText={handleDraftLocationChange}
+                placeholder="E.g. London, United Kingdom"
+                placeholderTextColor="#8EA1B8"
+                style={styles.locationInput}
+                autoCapitalize="words"
+                returnKeyType="done"
+                clearButtonMode="while-editing"
+              />
+            </View>
+
+              <View style={styles.filterSection}>
+                <Text style={styles.sectionLabel}>Interests</Text>
+                <Text style={styles.sectionHint}>Pick up to {MAX_FILTER_INTERESTS} interests to match on.</Text>
+                <View style={styles.chipWrap}>
+                  {FILTER_TAG_OPTIONS.map((tag) => {
+                    const normalized = tag.toLowerCase()
+                    const active = draftFilters.interests.includes(normalized)
+                    return (
+                      <Pressable
+                        key={tag}
+                        onPress={() => toggleDraftInterest(tag)}
+                        style={[styles.chip, styles.interestChip, active && styles.chipActive]}
+                      >
+                        <Text style={[styles.chipText, active && styles.chipTextActive]}>
+                          {tag.replace(/_/g, ' ')}
+                        </Text>
+                      </Pressable>
+                    )
+                  })}
+                </View>
+              </View>
+            </ScrollView>
+
+            <View style={styles.filterActions}>
+              <Pressable style={styles.resetButton} onPress={handleResetFilters}>
+                <Text style={styles.resetButtonText}>Reset</Text>
+              </Pressable>
+              <Pressable style={styles.applyButton} onPress={handleApplyFilters}>
+                <Text style={styles.applyButtonText}>Apply Filters</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   )
 }
@@ -496,13 +961,13 @@ function Card({ profile, isTop, pan }) {
           toValue: 1,
           duration: 2500,
           easing: Easing.inOut(Easing.quad),
-          useNativeDriver: true,
+          useNativeDriver: false,
         }),
         Animated.timing(breathe, {
           toValue: 0,
           duration: 2500,
           easing: Easing.inOut(Easing.quad),
-          useNativeDriver: true,
+          useNativeDriver: false,
         }),
       ])
     );
@@ -512,6 +977,11 @@ function Card({ profile, isTop, pan }) {
 
   const breatheScale = breathe.interpolate({ inputRange: [0, 1], outputRange: [1, 1.01] });
   const breatheShadow = breathe.interpolate({ inputRange: [0, 1], outputRange: [12, 20] });
+
+  const metricsSource = profile.profile?.compatibility_metrics || profile.compatibility_metrics || null;
+  const activity = metricsSource?.activity ?? null;
+  const banter = metricsSource?.banter ?? null;
+  const ghost = metricsSource?.ghost ?? null;
 
   const likeOpacity = pan
     ? pan.x.interpolate({ inputRange: [0, 40, 160], outputRange: [0, 0, 1], extrapolate: 'clamp' })
@@ -532,7 +1002,11 @@ function Card({ profile, isTop, pan }) {
         transform: [{ scale: isTop ? breatheScale : 1 }],
       }}
     >
-      <Image source={profile.imageUri} style={styles.cardImg} resizeMode="cover" />
+      {profile.imageUri ? (
+        <Image source={profile.imageUri} style={styles.cardImg} resizeMode="cover" />
+      ) : (
+        <View style={styles.cardImg} />
+      )}
       <View style={styles.overlayWarm} />
 
       {isTop && Array.from({ length: 8 }).map((_, i) => <SubtleSpark key={i} delay={i * 600} />)}
@@ -565,10 +1039,14 @@ function Card({ profile, isTop, pan }) {
               </View>
             </View>
 
+            {profile.location ? (
+              <Text style={styles.locationText}>{profile.location}</Text>
+            ) : null}
+
             <View style={styles.metricsContainer}>
-              <Metric label="Red Flag" fill="#FF6B6B" percent={35} />
-              <Metric label="Banter" fill="#5BC0F8" percent={80} />
-              <Metric label="Ghost" fill="#9B59B6" percent={45} />
+              <Metric label="Activity" fill="#FF6B6B" percent={activity} />
+              <Metric label="Banter" fill="#5BC0F8" percent={banter} />
+              <Metric label="Ghost" fill="#9B59B6" percent={ghost} />
             </View>
           </View>
         </BlurView>
@@ -578,12 +1056,18 @@ function Card({ profile, isTop, pan }) {
 }
 
 function Metric({ label, fill, percent }) {
+  const hasValue = percent !== null && percent !== undefined;
+  const displayPercent = hasValue ? Math.round(Number(percent) * 100) : null;
+
   return (
     <View style={styles.metricRow}>
       <Text style={styles.metricLabel}>{label}</Text>
       <View style={styles.metricBar}>
-        <View style={[styles.metricBarFill, { backgroundColor: fill, width: `${percent}%` }]} />
+        {hasValue ? (
+          <View style={[styles.metricBarFill, { backgroundColor: fill, width: `${displayPercent}%` }]} />
+        ) : null}
       </View>
+      <Text style={styles.metricValue}>{hasValue ? `${displayPercent}%` : '–'}</Text>
     </View>
   );
 }
@@ -600,23 +1084,23 @@ function SubtleSpark({ delay = 0 }) {
           toValue: 0.4,
           duration: 800,
           easing: Easing.inOut(Easing.quad),
-          useNativeDriver: true,
+          useNativeDriver: false,
         }),
         Animated.parallel([
           Animated.timing(ty, {
             toValue: -CARD_H * 0.4,
             duration: 4000,
             easing: Easing.inOut(Easing.quad),
-            useNativeDriver: true,
+            useNativeDriver: false,
           }),
           Animated.timing(op, {
             toValue: 0,
             duration: 4000,
             easing: Easing.inOut(Easing.quad),
-            useNativeDriver: true,
+            useNativeDriver: false,
           }),
         ]),
-        Animated.timing(ty, { toValue: 0, duration: 0, useNativeDriver: true }),
+        Animated.timing(ty, { toValue: 0, duration: 0, useNativeDriver: false }),
       ])
     );
     loop.start();
@@ -644,6 +1128,199 @@ function SubtleSpark({ delay = 0 }) {
 }
 
 const styles = StyleSheet.create({
+  filterTag: {
+    position: 'absolute',
+    left: 20,
+    zIndex: 1200,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 16,
+    backgroundColor: 'rgba(255,255,255,0.92)',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(6,57,112,0.18)',
+    shadowColor: '#5BC0F8',
+    shadowOpacity: 0.16,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 4,
+  },
+  filterTagText: {
+    color: '#063970',
+    fontSize: 12,
+    fontWeight: '700',
+    letterSpacing: 0.25,
+    textTransform: 'capitalize',
+  },
+  modalRoot: {
+    flex: 1,
+    backgroundColor: 'rgba(6, 12, 24, 0.35)',
+    justifyContent: 'flex-end',
+  },
+  modalBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  filterModal: {
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    paddingHorizontal: 24,
+    paddingTop: 28,
+    paddingBottom: 18,
+    shadowColor: '#000',
+    shadowOpacity: 0.15,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: -8 },
+    elevation: 12,
+  },
+  filterTitle: {
+    fontSize: 24,
+    fontWeight: '800',
+    color: '#063970',
+    textTransform: 'capitalize',
+  },
+  filterSubtitle: {
+    marginTop: 6,
+    fontSize: 14,
+    color: '#4F5D75',
+  },
+  filterScroll: {
+    maxHeight: 420,
+    marginTop: 16,
+  },
+  filterContent: {
+    paddingBottom: 16,
+    gap: 20,
+  },
+  filterSection: {
+    gap: 12,
+  },
+  sectionLabel: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#063970',
+    textTransform: 'capitalize',
+  },
+  sectionHint: {
+    fontSize: 13,
+    color: '#6B7D90',
+  },
+  chipRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  chipWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+  },
+  chip: {
+    paddingVertical: 6,
+    paddingHorizontal: 14,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    backgroundColor: '#FFFFFF',
+  },
+  interestChip: {
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+  },
+  chipActive: {
+    borderColor: '#5BC0F8',
+    backgroundColor: 'rgba(91,192,248,0.12)',
+  },
+  chipText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#4F5D75',
+    textTransform: 'capitalize',
+  },
+  chipTextActive: {
+    color: '#063970',
+  },
+  ageRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  ageField: {
+    flex: 1,
+  },
+  ageLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#6B7D90',
+    marginBottom: 6,
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+  },
+  ageInput: {
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    borderRadius: 14,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#063970',
+    backgroundColor: '#F8FBFF',
+  },
+  locationInput: {
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    borderRadius: 14,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    fontSize: 15,
+    color: '#063970',
+    backgroundColor: '#F8FBFF',
+  },
+  ageSeparator: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#6B7D90',
+  },
+  toggleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  filterActions: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 18,
+    gap: 14,
+  },
+  resetButton: {
+    flex: 1,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    paddingVertical: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  resetButtonText: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#4F5D75',
+  },
+  applyButton: {
+    flex: 1.4,
+    borderRadius: 18,
+    paddingVertical: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#5BC0F8',
+  },
+  applyButtonText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    textTransform: 'capitalize',
+  },
   container: { flex: 1, backgroundColor: '#E8F6FF' },
   deckContainer: { flex: 1, justifyContent: 'flex-start', alignItems: 'center', paddingHorizontal: SIDE_PADDING, paddingBottom: 30 },
   cardWrapper: { position: 'absolute', width: CARD_W, height: CARD_H },
@@ -667,6 +1344,7 @@ const styles = StyleSheet.create({
   ageDot: { marginHorizontal: 4, color: '#FFFFFF', fontSize: 18 },
   age: { fontSize: 18, fontWeight: '700', color: '#FFFFFF' },
   tagsRow: { flexDirection: 'row', marginLeft: 8 },
+  locationText: { color: '#FFFFFF', fontSize: 14, marginTop: 6 },
   cardTag: { backgroundColor: 'rgba(255,255,255,0.25)', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 10, marginLeft: 4 },
   cardTagText: { color: '#FFFFFF', fontSize: 12, fontWeight: '700' },
   metricsContainer: { marginTop: 6 },
@@ -674,7 +1352,24 @@ const styles = StyleSheet.create({
   metricLabel: { color: '#FFFFFF', fontSize: 12, marginBottom: 3 },
   metricBar: { height: 6, backgroundColor: 'rgba(255,255,255,0.25)', borderRadius: 6 },
   metricBarFill: { height: 6, borderRadius: 6 },
-  emptyText: { fontSize: 22, color: '#777' },
+  metricValue: { color: '#FFFFFF', fontSize: 12, marginTop: 3 },
+  emptyState: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 32,
+  },
+  emptyTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#32465A',
+    textAlign: 'center',
+  },
+  emptySubtitle: {
+    fontSize: 14,
+    color: '#6B7D90',
+    textAlign: 'center',
+    marginTop: 8,
+  },
   actionBar: { position: 'absolute', left: 0, right: 0, bottom: 42, paddingHorizontal: 40, flexDirection: 'row', justifyContent: 'space-around', zIndex: 2000 },
   actionButtonLarge: { width: 90, height: 90, borderRadius: 45, justifyContent: 'center', alignItems: 'center' },
   loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },

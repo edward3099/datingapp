@@ -318,7 +318,7 @@ export default function MessagesScreen() {
             source={
               otherUser?.avatar_url
                 ? { uri: otherUser.avatar_url }
-                : require('./assets/angel.png')
+                : require('./assets/no-image-available.png')
             }
             style={styles.headerAvatar}
           />

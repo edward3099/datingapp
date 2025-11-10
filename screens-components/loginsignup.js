@@ -30,12 +30,12 @@ function SparkleDot({ cfg }) {
       Animated.sequence([
         Animated.delay(cfg.delay),
         Animated.parallel([
-          Animated.timing(op, { toValue: 1, duration: 500, useNativeDriver: true }),
-          Animated.timing(ty, { toValue: -cfg.rise, duration: cfg.duration, useNativeDriver: true }),
+          Animated.timing(op, { toValue: 1, duration: 500, useNativeDriver: false }),
+          Animated.timing(ty, { toValue: -cfg.rise, duration: cfg.duration, useNativeDriver: false }),
         ]),
         Animated.parallel([
-          Animated.timing(op, { toValue: 0, duration: 600, useNativeDriver: true }),
-          Animated.timing(ty, { toValue: 0, duration: 0, useNativeDriver: true }),
+          Animated.timing(op, { toValue: 0, duration: 600, useNativeDriver: false }),
+          Animated.timing(ty, { toValue: 0, duration: 0, useNativeDriver: false }),
         ]),
       ])
     );
@@ -108,9 +108,9 @@ export default function LoginSignUp() {
 
   useEffect(() => {
     Animated.parallel([
-      Animated.timing(fadeIn, { toValue: 1, duration: 600, useNativeDriver: true }),
-      Animated.spring(panelLift, { toValue: 0, useNativeDriver: true }),
-      Animated.spring(panelScale, { toValue: 1, friction: 6, tension: 90, useNativeDriver: true }),
+      Animated.timing(fadeIn, { toValue: 1, duration: 600, useNativeDriver: false }),
+      Animated.spring(panelLift, { toValue: 0, useNativeDriver: false }),
+      Animated.spring(panelScale, { toValue: 1, friction: 6, tension: 90, useNativeDriver: false }),
     ]).start();
   }, []);
 
@@ -191,8 +191,8 @@ export default function LoginSignUp() {
 
       // Start animation with native driver only
       Animated.sequence([
-        Animated.spring(btnScale, { toValue: 0.95, useNativeDriver: true }),
-        Animated.spring(btnScale, { toValue: 1, friction: 4, tension: 120, useNativeDriver: true }),
+        Animated.spring(btnScale, { toValue: 0.95, useNativeDriver: false }),
+        Animated.spring(btnScale, { toValue: 1, friction: 4, tension: 120, useNativeDriver: false }),
       ]).start();
 
       // Authenticate
@@ -356,7 +356,7 @@ export default function LoginSignUp() {
                 setBtnPressed(true);
                 
                 // Start native driver animation
-                Animated.spring(btnScale, { toValue: 0.96, useNativeDriver: true }).start();
+                Animated.spring(btnScale, { toValue: 0.96, useNativeDriver: false }).start();
               }}
               onPressOut={() => {
                 // Stop all animations first
@@ -366,7 +366,7 @@ export default function LoginSignUp() {
                 setBtnPressed(false);
                 
                 // Start native driver animation
-                Animated.spring(btnScale, { toValue: 1, friction: 5, tension: 120, useNativeDriver: true }).start();
+                Animated.spring(btnScale, { toValue: 1, friction: 5, tension: 120, useNativeDriver: false }).start();
                 
                 onContinue();
               }}

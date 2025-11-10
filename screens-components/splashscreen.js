@@ -23,7 +23,7 @@ export default function SplashScreen() {
   const btnColor = useRef(new Animated.Value(0)).current
 
   useEffect(() => {
-    Animated.timing(fade, { toValue: 1, duration: 900, useNativeDriver: true }).start()
+    Animated.timing(fade, { toValue: 1, duration: 900, useNativeDriver: false }).start()
   }, [fade])
 
   const pan = useRef(
@@ -37,8 +37,8 @@ export default function SplashScreen() {
       },
       onPanResponderRelease: () => {
         Animated.parallel([
-          Animated.spring(tiltX, { toValue: 0, useNativeDriver: true }),
-          Animated.spring(tiltY, { toValue: 0, useNativeDriver: true }),
+          Animated.spring(tiltX, { toValue: 0, useNativeDriver: false }),
+          Animated.spring(tiltY, { toValue: 0, useNativeDriver: false }),
         ]).start()
       },
     })
@@ -51,8 +51,8 @@ export default function SplashScreen() {
 
   const handlePress = () => {
     Animated.sequence([
-      Animated.spring(btnScale, { toValue: 0.9, useNativeDriver: true }),
-      Animated.spring(btnScale, { toValue: 1, friction: 4, tension: 60, useNativeDriver: true }),
+      Animated.spring(btnScale, { toValue: 0.9, useNativeDriver: false }),
+      Animated.spring(btnScale, { toValue: 1, friction: 4, tension: 60, useNativeDriver: false }),
     ]).start(() => navigation && navigation.navigate('LoginSignUp'))
   }
 
@@ -145,14 +145,14 @@ function Sparkle({ left, baseY, size, delay, duration, drift }) {
       Animated.sequence([
         Animated.delay(delay),
         Animated.parallel([
-          Animated.timing(fall, { toValue: height * 1.1, duration, useNativeDriver: true }),
-          Animated.timing(op, { toValue: 1, duration: 800, useNativeDriver: true }),
-          Animated.timing(driftX, { toValue: drift, duration, useNativeDriver: true }),
+          Animated.timing(fall, { toValue: height * 1.1, duration, useNativeDriver: false }),
+          Animated.timing(op, { toValue: 1, duration: 800, useNativeDriver: false }),
+          Animated.timing(driftX, { toValue: drift, duration, useNativeDriver: false }),
         ]),
         Animated.parallel([
-          Animated.timing(op, { toValue: 0, duration: 600, useNativeDriver: true }),
-          Animated.timing(fall, { toValue: 0, duration: 0, useNativeDriver: true }),
-          Animated.timing(driftX, { toValue: 0, duration: 0, useNativeDriver: true }),
+          Animated.timing(op, { toValue: 0, duration: 600, useNativeDriver: false }),
+          Animated.timing(fall, { toValue: 0, duration: 0, useNativeDriver: false }),
+          Animated.timing(driftX, { toValue: 0, duration: 0, useNativeDriver: false }),
         ]),
       ])
     )
