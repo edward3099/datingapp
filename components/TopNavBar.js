@@ -131,9 +131,12 @@ export default function TopNavBar() {
   const [unreadMessageCount, setUnreadMessageCount] = useState(0);
   const matchesRef = useRef([]);
   const seenMatchesRef = useRef(new Set());
+  const likesRef = useRef([]);
+  const seenLikesRef = useRef(new Set());
   const conversationIdsRef = useRef(new Set());
   const matchUnsubscribeRef = useRef(null);
   const messageChannelRef = useRef(null);
+  const likesChannelRef = useRef(null);
   const isMountedRef = useRef(true);
 
   useEffect(() => {
@@ -174,19 +177,22 @@ export default function TopNavBar() {
     }
   };
 
-  const computeBadgeFromMatches = useCallback(
-    (matches, unread) => {
-      const unseenMatches = matches.filter((match) => match?.id && !seenMatchesRef.current.has(match.id));
-      if (!isMountedRef.current) return;
-      setUnreadMessageCount(unread);
-      setBadgeCount(unread + unseenMatches.length);
-    },
-    []
-  );
+  const computeBadgeTotals = useCallback((matches, likes, unread) => {
+    const unseenMatches = matches.filter(
+      (match) => match?.id && !seenMatchesRef.current.has(match.id)
+    );
+    const unseenLikes = likes.filter(
+      (like) => like?.id && !seenLikesRef.current.has(like.id)
+    );
+    if (!isMountedRef.current) return;
+    setUnreadMessageCount(unread);
+    setBadgeCount(unread + unseenMatches.length + unseenLikes.length);
+  }, []);
 
   const refreshCounts = useCallback(async () => {
     if (!isAuthenticated || !user?.id) {
       matchesRef.current = [];
+      likesRef.current = [];
       conversationIdsRef.current = new Set();
       if (!isMountedRef.current) return;
       setBadgeCount(0);
@@ -195,9 +201,10 @@ export default function TopNavBar() {
     }
 
     try {
-      const [matchesResult, unreadResult] = await Promise.all([
+      const [matchesResult, unreadResult, likesResult] = await Promise.all([
         matchService.getMatches(),
         messageService.getUnreadCount(),
+        matchService.getInboundLikes(),
       ]);
 
       if (matchesResult?.error) {
@@ -214,7 +221,9 @@ export default function TopNavBar() {
       );
 
       const unreadCount = typeof unreadResult?.count === 'number' ? unreadResult.count : 0;
-      computeBadgeFromMatches(matchList, unreadCount);
+      const likesList = Array.isArray(likesResult?.likes) ? likesResult.likes : [];
+      likesRef.current = likesList;
+      computeBadgeTotals(matchList, likesList, unreadCount);
     } catch (error) {
       logger.error?.('TopNavBar refresh counts error', {
         error: error?.message || String(error),
@@ -222,7 +231,7 @@ export default function TopNavBar() {
         userId: user?.id,
       });
     }
-  }, [computeBadgeFromMatches, isAuthenticated, user?.id]);
+  }, [computeBadgeTotals, isAuthenticated, user?.id]);
 
   useEffect(() => {
     refreshCounts();
@@ -245,8 +254,14 @@ export default function TopNavBar() {
         supabase.removeChannel(messageChannelRef.current);
         messageChannelRef.current = null;
       }
+      if (likesChannelRef.current) {
+        supabase.removeChannel(likesChannelRef.current);
+        likesChannelRef.current = null;
+      }
       seenMatchesRef.current = new Set();
+      seenLikesRef.current = new Set();
       matchesRef.current = [];
+      likesRef.current = [];
       conversationIdsRef.current = new Set();
       if (isMountedRef.current) {
         setBadgeCount(0);
@@ -296,7 +311,7 @@ export default function TopNavBar() {
                 .then((result) => {
                   if (result?.error) throw result.error;
                   const unreadCount = typeof result?.count === 'number' ? result.count : 0;
-                  computeBadgeFromMatches(matchesRef.current, unreadCount);
+                  computeBadgeTotals(matchesRef.current, likesRef.current, unreadCount);
                 })
                 .catch((error) => {
                   logger.error?.('TopNavBar unread refresh error', {
@@ -317,7 +332,35 @@ export default function TopNavBar() {
       )
       .subscribe();
 
-  messageChannelRef.current = channel;
+    messageChannelRef.current = channel;
+
+    const likesChannel = supabase
+      .channel(`nav-likes-${user.id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'swipes',
+          filter: `target_id=eq.${user.id}`,
+        },
+        (payload) => {
+          try {
+            const swipe = payload?.new;
+            if (!swipe) return;
+            if (swipe.direction !== 'like') return;
+            refreshCounts();
+          } catch (error) {
+            logger.error?.('TopNavBar likes channel error', {
+              error: error?.message || String(error),
+              stack: error?.stack,
+            });
+          }
+        }
+      )
+      .subscribe();
+
+    likesChannelRef.current = likesChannel;
 
     return () => {
       isActive = false;
@@ -336,19 +379,30 @@ export default function TopNavBar() {
         supabase.removeChannel(channel);
         messageChannelRef.current = null;
       }
+      if (likesChannel) {
+        supabase.removeChannel(likesChannel);
+        likesChannelRef.current = null;
+      }
     };
-  }, [isAuthenticated, refreshCounts, user?.id, computeBadgeFromMatches]);
+  }, [isAuthenticated, refreshCounts, user?.id, computeBadgeTotals]);
 
   useEffect(() => {
     if (route.name === 'Messages') {
-      let updated = false;
+      let matchesUpdated = false;
+      let likesUpdated = false;
       matchesRef.current.forEach((match) => {
         if (match?.id && !seenMatchesRef.current.has(match.id)) {
           seenMatchesRef.current.add(match.id);
-          updated = true;
+          matchesUpdated = true;
         }
       });
-      if (updated) {
+      likesRef.current.forEach((like) => {
+        if (like?.id && !seenLikesRef.current.has(like.id)) {
+          seenLikesRef.current.add(like.id);
+          likesUpdated = true;
+        }
+      });
+      if (matchesUpdated || likesUpdated) {
         setBadgeCount(unreadMessageCount);
       }
       refreshCounts();

@@ -423,6 +423,47 @@ export const profileService = {
   },
 
   // Update preferences
+  async getPreferences() {
+    let userId = null;
+    try {
+      const {
+        data: { user },
+        error: authError,
+      } = await supabase.auth.getUser();
+      if (authError) throw authError;
+      if (!user) throw new Error('Not authenticated');
+      userId = user.id;
+
+      const { data, error } = await supabase
+        .from('preferences')
+        .select('*')
+        .eq('profile_id', user.id)
+        .maybeSingle();
+
+      if (error && error.code !== 'PGRST116') throw error;
+      return { preferences: data ?? null, error: null };
+    } catch (error) {
+      if (error?.code === 'PGRST116') {
+        return { preferences: null, error: null };
+      }
+      logger.error('Get preferences error', {
+        error: error?.message || String(error),
+        code: error?.code,
+        hint: error?.hint,
+        userId,
+        originalError:
+          error instanceof Error
+            ? {
+                name: error.name,
+                message: error.message,
+                stack: error.stack?.split('\n').slice(0, 10).join('\n'),
+              }
+            : error,
+      });
+      return { preferences: null, error };
+    }
+  },
+
   async updatePreferences(preferences) {
     let userId = null;
     try {

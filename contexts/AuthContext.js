@@ -109,7 +109,9 @@ export function AuthProvider({ children }) {
     setLoading(true);
     try {
       const { user: signedInUser, session: newSession, error } = await authService.signIn(email, password);
-      if (error) throw error;
+      if (error) {
+        throw error;
+      }
 
       setUser(signedInUser);
       setSession(newSession);
@@ -127,7 +129,15 @@ export function AuthProvider({ children }) {
 
       return { user: signedInUser, error: null };
     } catch (error) {
-      logger.error('Sign in error', { error: error.message });
+      if (error?.code === 'invalid_credentials') {
+        logger.warn?.('Sign in rejected: invalid credentials', { email });
+        return { user: null, error };
+      }
+      logger.error('Sign in error', {
+        error: error?.message || String(error),
+        stack: error?.stack,
+        code: error?.code,
+      });
       return { user: null, error };
     } finally {
       setLoading(false);
@@ -138,7 +148,9 @@ export function AuthProvider({ children }) {
     setLoading(true);
     try {
       const { user: newUser, session: newSession, error } = await authService.signUp(email, password);
-      if (error) throw error;
+      if (error) {
+        throw error;
+      }
 
       setUser(newUser);
       setSession(newSession);

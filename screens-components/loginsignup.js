@@ -251,7 +251,15 @@ export default function LoginSignUp() {
             result.error.message || 'An error occurred. Please try again.'
           );
         }
-        logger.error('Auth error', { error: result.error.message, mode, code: result.error.code });
+        const logMethod =
+          result.error.code === 'invalid_credentials' || result.error.message?.includes('Invalid login')
+            ? logger.warn
+            : logger.error;
+        logMethod?.call(logger, 'Auth error', {
+          error: result.error.message,
+          mode,
+          code: result.error.code,
+        });
         return;
       }
 
@@ -262,8 +270,13 @@ export default function LoginSignUp() {
       }
     } catch (error) {
       setIsLoading(false);
-      logger.error('onContinue error', { error: error.toString(), stack: error.stack, mode });
-      Alert.alert('Error', 'An unexpected error occurred. Please try again.');
+      if (error?.code === 'invalid_credentials' || error?.message?.includes?.('Invalid login')) {
+        logger.warn?.('onContinue invalid credentials', { mode, error: error?.message });
+        Alert.alert('Invalid Credentials', 'The email or password you entered is incorrect. Please try again.');
+      } else {
+        logger.error('onContinue error', { error: error.toString(), stack: error.stack, mode });
+        Alert.alert('Error', 'An unexpected error occurred. Please try again.');
+      }
     }
   };
 

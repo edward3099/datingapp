@@ -14,6 +14,7 @@ import {
   Platform,
   Modal,
   TouchableWithoutFeedback,
+  TouchableOpacity,
   ScrollView,
   TextInput,
   Switch,
@@ -105,7 +106,7 @@ const MAX_FILTER_INTERESTS = 3;
 
 export default function SwipeScreen() {
   const navigation = useNavigation()
-  const { user, isAuthenticated } = useAuth()
+  const { user, isAuthenticated, profile } = useAuth()
   const insets = useSafeAreaInsets()
   const [deck, setDeck] = useState([])
   const [loading, setLoading] = useState(true)
@@ -114,6 +115,54 @@ export default function SwipeScreen() {
   const [filterModalVisible, setFilterModalVisible] = useState(false)
   const [draftFilters, setDraftFilters] = useState(toDraftFilters(DEFAULT_FILTERS))
   const [matchCelebration, setMatchCelebration] = useState(null)
+  const [maxAgePickerVisible, setMaxAgePickerVisible] = useState(false)
+  const [locationInputModalVisible, setLocationInputModalVisible] = useState(false)
+  const [tempLocationValue, setTempLocationValue] = useState('')
+  const appliedProfileFiltersRef = useRef(false)
+  const maxAgeInputRef = useRef(null)
+  const locationInputRef = useRef(null)
+
+  const applyDiscoveryFilters = useCallback(
+    ({ gender, minAge, maxAge } = {}) => {
+      if (appliedProfileFiltersRef.current) return
+
+      const allowedGenders = new Set(['male', 'female', 'other', 'any'])
+      const normalizedGenderCandidate =
+        typeof gender === 'string' && gender.length ? gender.toLowerCase() : 'any'
+      const normalizedGender = allowedGenders.has(normalizedGenderCandidate)
+        ? normalizedGenderCandidate
+        : 'any'
+
+      const toNumber = (value) => {
+        if (typeof value === 'number' && Number.isFinite(value)) return value
+        if (typeof value === 'string') {
+          const parsed = parseInt(value, 10)
+          return Number.isNaN(parsed) ? null : parsed
+        }
+        return null
+      }
+
+      const candidateMin = toNumber(minAge)
+      const candidateMax = toNumber(maxAge)
+      const sanitizedMin = Math.max(18, candidateMin ?? DEFAULT_FILTERS.minAge)
+      const maxSeed = candidateMax ?? DEFAULT_FILTERS.maxAge
+      const sanitizedMax = Math.max(sanitizedMin, Math.min(99, maxSeed))
+
+      appliedProfileFiltersRef.current = true
+
+      setFilters((prev) => {
+        const next = {
+          ...prev,
+          gender: normalizedGender,
+          minAge: sanitizedMin,
+          maxAge: sanitizedMax,
+        }
+        setDraftFilters(toDraftFilters(next))
+        return next
+      })
+    },
+    [setDraftFilters]
+  )
 
   const applyRelationshipFilter = useCallback(
     (profiles) => {
@@ -226,7 +275,34 @@ export default function SwipeScreen() {
 
   const handleDraftMaxAgeChange = useCallback((value) => {
     const numeric = value.replace(/[^0-9]/g, '')
-    setDraftFilters((prev) => ({ ...prev, maxAge: numeric }))
+    setDraftFilters((prev) => {
+      const nextMax = numeric === '' ? '' : numeric
+      return {
+        ...prev,
+        maxAge: nextMax,
+      }
+    })
+  }, [])
+
+  const handleDraftMaxAgeEndEditing = useCallback(() => {
+    setDraftFilters((prev) => {
+      const parsedMin = parseInt(prev.minAge, 10)
+      const parsedMax = parseInt(prev.maxAge, 10)
+      const minVal = Number.isNaN(parsedMin) ? DEFAULT_FILTERS.minAge : parsedMin
+
+      if (Number.isNaN(parsedMax)) {
+        return {
+          ...prev,
+          maxAge: String(Math.max(minVal, DEFAULT_FILTERS.minAge)),
+        }
+      }
+
+      const clamped = Math.max(minVal, Math.min(99, parsedMax))
+      if (String(clamped) !== prev.maxAge) {
+        return { ...prev, maxAge: String(clamped) }
+      }
+      return prev
+    })
   }, [])
 
   const toggleDraftInterest = useCallback((tag) => {
@@ -250,6 +326,28 @@ export default function SwipeScreen() {
   const handleDraftLocationChange = useCallback((value) => {
     setDraftFilters((prev) => ({ ...prev, location: value }))
   }, [])
+
+  const openMaxAgePicker = useCallback(() => {
+    setMaxAgePickerVisible(true)
+  }, [])
+
+  const selectMaxAge = useCallback((age) => {
+    const parsedMin = parseInt(draftFilters.minAge, 10)
+    const minVal = Number.isNaN(parsedMin) ? DEFAULT_FILTERS.minAge : parsedMin
+    const clamped = Math.max(minVal, Math.min(99, age))
+    setDraftFilters((prev) => ({ ...prev, maxAge: String(clamped) }))
+    setMaxAgePickerVisible(false)
+  }, [draftFilters.minAge])
+
+  const openLocationInput = useCallback(() => {
+    setTempLocationValue(draftFilters.location)
+    setLocationInputModalVisible(true)
+  }, [draftFilters.location])
+
+  const saveLocation = useCallback(() => {
+    setDraftFilters((prev) => ({ ...prev, location: tempLocationValue }))
+    setLocationInputModalVisible(false)
+  }, [tempLocationValue])
 
   const handleApplyFilters = useCallback(() => {
     const parsedMin = parseInt(draftFilters.minAge, 10)
@@ -288,6 +386,69 @@ export default function SwipeScreen() {
     () => (Platform.OS === 'ios' ? Math.max(insets.top + 6, 46) : Math.max(insets.top + 8, 10)),
     [insets.top]
   )
+
+  useEffect(() => {
+    if (!profile || appliedProfileFiltersRef.current) return
+
+    const hasPrefData =
+      profile.preferred_gender != null ||
+      profile.preferred_min_age != null ||
+      profile.preferred_max_age != null
+
+    if (!hasPrefData) return
+
+    applyDiscoveryFilters({
+      gender: profile.preferred_gender,
+      minAge: profile.preferred_min_age,
+      maxAge: profile.preferred_max_age,
+    })
+  }, [profile, applyDiscoveryFilters])
+
+  useEffect(() => {
+    if (!isAuthenticated || appliedProfileFiltersRef.current) return
+
+    let cancelled = false
+    profileService
+      .getPreferences()
+      .then(({ preferences, error }) => {
+        if (cancelled || appliedProfileFiltersRef.current) return
+        if (error || !preferences) return
+
+        const preferencePayload = {
+          gender:
+            (Array.isArray(preferences.show_me) && preferences.show_me.length > 0 && preferences.show_me[0] !== 'any')
+              ? preferences.show_me[0]
+              : preferences.preferred_gender ??
+                preferences.gender ??
+                preferences.gender_preference ??
+                null,
+          minAge:
+            preferences.age_min ??
+            preferences.min_age ??
+            preferences.preferred_min_age ??
+            preferences.min_preferred_age ??
+            null,
+          maxAge:
+            preferences.age_max ??
+            preferences.max_age ??
+            preferences.preferred_max_age ??
+            preferences.max_preferred_age ??
+            null,
+        }
+
+        applyDiscoveryFilters(preferencePayload)
+      })
+      .catch((error) => {
+        logger.warn?.('Discovery preferences load warning', {
+          error: error?.message || String(error),
+        })
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [isAuthenticated, applyDiscoveryFilters])
+
 
   // Load recommendations on mount and when deck is low
   useEffect(() => {
@@ -864,27 +1025,75 @@ export default function SwipeScreen() {
                 <View style={styles.ageRow}>
                   <View style={styles.ageField}>
                     <Text style={styles.ageLabel}>Min</Text>
-                    <TextInput
-                      value={draftFilters.minAge}
-                      onChangeText={handleDraftMinAgeChange}
-                      keyboardType="number-pad"
-                      style={styles.ageInput}
-                      maxLength={2}
-                      placeholder="18"
-                      placeholderTextColor="#8EA1B8"
-                    />
+                    <View style={styles.ageInputContainer}>
+                      <TextInput
+                        value={draftFilters.minAge}
+                        onChangeText={handleDraftMinAgeChange}
+                        keyboardType="number-pad"
+                        style={styles.ageInputInner}
+                        maxLength={2}
+                        placeholder="18"
+                        placeholderTextColor="#8EA1B8"
+                        selectionColor="#063970"
+                        underlineColorAndroid="transparent"
+                        spellCheck={false}
+                        autoCorrect={false}
+                        autoComplete="off"
+                        textContentType="none"
+                        autoCapitalize="none"
+                        importantForAutofill="no"
+                        textAlign="center"
+                        keyboardAppearance="light"
+                        returnKeyType="done"
+                        blurOnSubmit={true}
+                      />
+                    </View>
                   </View>
                   <Text style={styles.ageSeparator}>to</Text>
                   <View style={styles.ageField}>
                     <Text style={styles.ageLabel}>Max</Text>
                     <TextInput
-                      value={draftFilters.maxAge}
-                      onChangeText={handleDraftMaxAgeChange}
-                      keyboardType="number-pad"
-                      style={styles.ageInput}
-                      maxLength={2}
+                      value={draftFilters.maxAge || ''}
+                      onChangeText={(text) => {
+                        const num = text.replace(/[^0-9]/g, '')
+                        if (num === '') {
+                          setDraftFilters((prev) => ({ ...prev, maxAge: '' }))
+                        } else {
+                          const parsed = parseInt(num, 10)
+                          const parsedMin = parseInt(draftFilters.minAge, 10)
+                          const minVal = Number.isNaN(parsedMin) ? DEFAULT_FILTERS.minAge : parsedMin
+                          if (parsed >= minVal && parsed <= 99) {
+                            setDraftFilters((prev) => ({ ...prev, maxAge: num }))
+                          } else if (num.length <= 2) {
+                            // Allow typing partial numbers (e.g., "6" before "60")
+                            setDraftFilters((prev) => ({ ...prev, maxAge: num }))
+                          }
+                        }
+                      }}
+                      onBlur={() => {
+                        // Validate on blur - ensure it's within valid range
+                        const parsed = parseInt(draftFilters.maxAge, 10)
+                        const parsedMin = parseInt(draftFilters.minAge, 10)
+                        const minVal = Number.isNaN(parsedMin) ? DEFAULT_FILTERS.minAge : parsedMin
+                        if (draftFilters.maxAge && (Number.isNaN(parsed) || parsed < minVal || parsed > 99)) {
+                          setDraftFilters((prev) => ({ ...prev, maxAge: String(Math.max(minVal, Math.min(99, parsed || minVal))) }))
+                        }
+                      }}
                       placeholder="60"
                       placeholderTextColor="#8EA1B8"
+                      keyboardType="number-pad"
+                      style={styles.ageInput}
+                      textAlign="center"
+                      maxLength={2}
+                      autoCorrect={false}
+                      spellCheck={false}
+                      textContentType="none"
+                      importantForAutofill="no"
+                      keyboardAppearance="light"
+                      returnKeyType="done"
+                      blurOnSubmit={true}
+                      selectionColor="#063970"
+                      underlineColorAndroid="transparent"
                     />
                   </View>
                 </View>
@@ -901,14 +1110,22 @@ export default function SwipeScreen() {
               <Text style={styles.sectionLabel}>Location</Text>
               <Text style={styles.sectionHint}>Enter a city or country to prioritise nearby matches.</Text>
               <TextInput
-                value={draftFilters.location}
-                onChangeText={handleDraftLocationChange}
+                value={draftFilters.location || ''}
+                onChangeText={(text) => {
+                  setDraftFilters((prev) => ({ ...prev, location: text }))
+                }}
                 placeholder="E.g. London, United Kingdom"
                 placeholderTextColor="#8EA1B8"
                 style={styles.locationInput}
-                autoCapitalize="words"
+                autoCorrect={false}
+                spellCheck={false}
+                textContentType="none"
+                importantForAutofill="no"
+                keyboardAppearance="light"
                 returnKeyType="done"
-                clearButtonMode="while-editing"
+                blurOnSubmit={true}
+                selectionColor="#063970"
+                underlineColorAndroid="transparent"
               />
             </View>
 
@@ -945,6 +1162,119 @@ export default function SwipeScreen() {
             </View>
           </View>
         </View>
+      </Modal>
+
+      {/* Max Age Picker Modal */}
+      <Modal
+        visible={maxAgePickerVisible}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setMaxAgePickerVisible(false)}
+      >
+        <TouchableWithoutFeedback onPress={() => setMaxAgePickerVisible(false)}>
+          <View style={styles.agePickerModalOverlay}>
+            <TouchableWithoutFeedback>
+              <View style={styles.agePickerModalContent}>
+                <View style={styles.agePickerHeader}>
+                  <Text style={styles.agePickerTitle}>Select Maximum Age</Text>
+                  <Pressable
+                    onPress={() => setMaxAgePickerVisible(false)}
+                    style={styles.agePickerCloseButton}
+                  >
+                    <Text style={styles.agePickerCloseText}>Done</Text>
+                  </Pressable>
+                </View>
+                <ScrollView
+                  style={styles.agePickerScrollView}
+                  contentContainerStyle={styles.agePickerScrollContent}
+                  showsVerticalScrollIndicator={true}
+                >
+                  {Array.from({ length: 82 }, (_, i) => {
+                    const age = 18 + i
+                    const parsedMin = parseInt(draftFilters.minAge, 10)
+                    const minVal = Number.isNaN(parsedMin) ? DEFAULT_FILTERS.minAge : parsedMin
+                    const isSelected = draftFilters.maxAge === String(age)
+                    const isDisabled = age < minVal
+                    
+                    return (
+                      <Pressable
+                        key={age}
+                        onPress={() => !isDisabled && selectMaxAge(age)}
+                        disabled={isDisabled}
+                        style={[
+                          styles.agePickerOption,
+                          isSelected && styles.agePickerOptionSelected,
+                          isDisabled && styles.agePickerOptionDisabled
+                        ]}
+                      >
+                        <Text style={[
+                          styles.agePickerOptionText,
+                          isSelected && styles.agePickerOptionTextSelected,
+                          isDisabled && styles.agePickerOptionTextDisabled
+                        ]}>
+                          {age}
+                        </Text>
+                      </Pressable>
+                    )
+                  })}
+                </ScrollView>
+              </View>
+            </TouchableWithoutFeedback>
+          </View>
+        </TouchableWithoutFeedback>
+      </Modal>
+
+      {/* Location Input Modal */}
+      <Modal
+        visible={locationInputModalVisible}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setLocationInputModalVisible(false)}
+      >
+        <TouchableWithoutFeedback onPress={() => setLocationInputModalVisible(false)}>
+          <View style={styles.locationModalOverlay}>
+            <TouchableWithoutFeedback>
+              <View style={styles.locationModalContent}>
+                <View style={styles.locationModalHeader}>
+                  <Text style={styles.locationModalTitle}>Enter Location</Text>
+                  <Pressable
+                    onPress={() => setLocationInputModalVisible(false)}
+                    style={styles.locationModalCloseButton}
+                  >
+                    <Text style={styles.locationModalCloseText}>Cancel</Text>
+                  </Pressable>
+                </View>
+                <View style={styles.locationModalInputContainer}>
+                  <View style={styles.locationModalInputWrapper}>
+                    <TextInput
+                      value={tempLocationValue}
+                      onChangeText={setTempLocationValue}
+                      placeholder="E.g. London, United Kingdom"
+                      placeholderTextColor="#8EA1B8"
+                      style={styles.locationModalInput}
+                      autoCapitalize="words"
+                      returnKeyType="done"
+                      onSubmitEditing={saveLocation}
+                      autoFocus={true}
+                      selectionColor="#063970"
+                      underlineColorAndroid="transparent"
+                      spellCheck={false}
+                      autoCorrect={false}
+                      autoComplete="off"
+                      textContentType="oneTimeCode"
+                      importantForAutofill="no"
+                      backgroundColor="#F8FBFF"
+                      blurOnSubmit={false}
+                    />
+                  </View>
+                </View>
+                <Pressable style={styles.locationModalSaveButton} onPress={saveLocation}>
+                  <Text style={styles.locationModalSaveText}>Save</Text>
+                </Pressable>
+              </View>
+            </TouchableWithoutFeedback>
+          </View>
+        </TouchableWithoutFeedback>
       </Modal>
     </View>
   )
@@ -1255,26 +1585,239 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 0.4,
   },
-  ageInput: {
+  ageInputWrapper: {
+    borderRadius: 14,
     borderWidth: 1,
     borderColor: '#CBD5E1',
-    borderRadius: 14,
+    backgroundColor: '#F8FBFF',
     paddingVertical: 10,
     paddingHorizontal: 12,
+    minHeight: 40,
+    width: '100%',
+  },
+  ageInputContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '100%',
+  },
+  ageInputText: {
     fontSize: 16,
     fontWeight: '600',
     color: '#063970',
-    backgroundColor: '#F8FBFF',
+    textAlign: 'center',
   },
-  locationInput: {
+  ageInputIcon: {
+    marginLeft: 6,
+  },
+  ageInputPlaceholder: {
+    color: '#8EA1B8',
+    fontWeight: '400',
+  },
+  ageInputContainer: {
+    borderRadius: 14,
     borderWidth: 1,
     borderColor: '#CBD5E1',
+    backgroundColor: '#F8FBFF',
+    minHeight: 40,
+    width: '100%',
+    overflow: 'hidden',
+  },
+  ageInputInner: {
+    flex: 1,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    minHeight: 40,
+    width: '100%',
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#063970',
+    textAlign: 'center',
+    borderWidth: 0,
+    backgroundColor: 'transparent',
+  },
+  ageInput: {
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    backgroundColor: '#F8FBFF',
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    minHeight: 40,
+    width: '100%',
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#063970',
+    textAlign: 'center',
+  },
+  locationInputWrapper: {
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    backgroundColor: '#F8FBFF',
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    minHeight: 44,
+    justifyContent: 'center',
+    width: '100%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  locationInputText: {
+    fontSize: 15,
+    color: '#063970',
+    flex: 1,
+  },
+  locationInputIcon: {
+    marginLeft: 'auto',
+  },
+  locationInputPlaceholder: {
+    color: '#8EA1B8',
+  },
+  locationInput: {
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    backgroundColor: '#F8FBFF',
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    minHeight: 44,
+    fontSize: 15,
+    color: '#063970',
+    width: '100%',
+  },
+  agePickerModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
+  },
+  agePickerModalContent: {
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    maxHeight: '70%',
+    paddingBottom: Platform.OS === 'ios' ? 34 : 20,
+  },
+  agePickerHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E0E6ED',
+  },
+  agePickerTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#063970',
+  },
+  agePickerCloseButton: {
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+  },
+  agePickerCloseText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#007AFF',
+  },
+  agePickerScrollView: {
+    maxHeight: 400,
+  },
+  agePickerScrollContent: {
+    paddingVertical: 10,
+  },
+  agePickerOption: {
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F0F0F0',
+  },
+  agePickerOptionSelected: {
+    backgroundColor: '#E8F6FF',
+  },
+  agePickerOptionDisabled: {
+    opacity: 0.3,
+  },
+  agePickerOptionText: {
+    fontSize: 16,
+    color: '#063970',
+    textAlign: 'center',
+  },
+  agePickerOptionTextSelected: {
+    color: '#007AFF',
+    fontWeight: '700',
+  },
+  agePickerOptionTextDisabled: {
+    color: '#8EA1B8',
+  },
+  locationModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
+  },
+  locationModalContent: {
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingBottom: Platform.OS === 'ios' ? 34 : 20,
+  },
+  locationModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E0E6ED',
+  },
+  locationModalTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#063970',
+  },
+  locationModalCloseButton: {
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+  },
+  locationModalCloseText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#007AFF',
+  },
+  locationModalInputContainer: {
+    paddingHorizontal: 20,
+    paddingVertical: 20,
+  },
+  locationModalInputWrapper: {
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    backgroundColor: '#F8FBFF',
+    overflow: 'hidden',
+  },
+  locationModalInput: {
+    borderWidth: 0,
     borderRadius: 14,
     paddingVertical: 12,
     paddingHorizontal: 14,
     fontSize: 15,
     color: '#063970',
     backgroundColor: '#F8FBFF',
+  },
+  locationModalSaveButton: {
+    marginHorizontal: 20,
+    marginBottom: 20,
+    backgroundColor: '#007AFF',
+    borderRadius: 14,
+    paddingVertical: 14,
+    alignItems: 'center',
+  },
+  locationModalSaveText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#FFFFFF',
   },
   ageSeparator: {
     fontSize: 14,

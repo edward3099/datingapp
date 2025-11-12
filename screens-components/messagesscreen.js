@@ -219,6 +219,77 @@ export default function MessagesScreen() {
     }
   }, [isAuthenticated, user?.id]);
 
+  const promoteLikeToMatch = useCallback(
+    (matchRecord) => {
+      if (!matchRecord || !user?.id) return;
+
+      const matchId =
+        matchRecord.id ??
+        matchRecord.match_id ??
+        matchRecord.matchId ??
+        (typeof matchRecord.match === 'object' ? matchRecord.match.id : null);
+
+      const otherUserId =
+        matchRecord.user_a === user.id ? matchRecord.user_b : matchRecord.user_a;
+
+      if (!otherUserId) return;
+
+      let promotedLike = null;
+
+      setLikes((prevLikes) => {
+        if (!Array.isArray(prevLikes) || prevLikes.length === 0) return prevLikes;
+        const nextLikes = [];
+        for (const likeEntry of prevLikes) {
+          const likeUserId =
+            likeEntry?.likerId ??
+            likeEntry?.profile?.id ??
+            likeEntry?.profile?.likerId ??
+            likeEntry?.profileId;
+          if (!promotedLike && likeUserId === otherUserId) {
+            promotedLike = likeEntry;
+            continue;
+          }
+          nextLikes.push(likeEntry);
+        }
+        if (!promotedLike) return prevLikes;
+        return nextLikes;
+      });
+
+      setMatches((prevMatches) => {
+        const alreadyExists = Array.isArray(prevMatches)
+          ? prevMatches.some((existing) => {
+              const existingId =
+                existing?.id ?? existing?.match_id ?? existing?.matchId ?? null;
+              return matchId && existingId === matchId;
+            })
+          : false;
+
+        if (alreadyExists) return prevMatches;
+
+        const otherProfile =
+          promotedLike?.profile ||
+          (matchRecord.user_a === user.id
+            ? matchRecord.user_b_profile
+            : matchRecord.user_a_profile) || { id: otherUserId };
+
+        const normalizedMatch = {
+          ...matchRecord,
+          id: matchId ?? matchRecord.id,
+          user_a_id: matchRecord.user_a,
+          user_b_id: matchRecord.user_b,
+          user_a: matchRecord.user_a_profile ?? matchRecord.user_a,
+          user_b: matchRecord.user_b_profile ?? matchRecord.user_b,
+          otherUser: otherProfile,
+          last_message: matchRecord.last_message ?? null,
+          unread_count: matchRecord.unread_count ?? 0,
+        };
+
+        return [normalizedMatch, ...(Array.isArray(prevMatches) ? prevMatches : [])];
+      });
+    },
+    [setLikes, setMatches, user?.id]
+  );
+
   useEffect(() => {
     loadMatches();
     loadInboundLikes();
@@ -231,7 +302,10 @@ export default function MessagesScreen() {
     let unsubscribeMatches = null;
     (async () => {
       try {
-        unsubscribeMatches = await matchService.subscribeToMatches(() => {
+        unsubscribeMatches = await matchService.subscribeToMatches((newMatch) => {
+          if (newMatch) {
+            promoteLikeToMatch(newMatch);
+          }
           loadMatches().catch((error) => {
             logger.error('Realtime matches refresh error', {
               error: error?.message || String(error),
@@ -265,7 +339,7 @@ export default function MessagesScreen() {
         }
       }
     };
-  }, [isAuthenticated, loadMatches, loadInboundLikes]);
+  }, [isAuthenticated, loadMatches, loadInboundLikes, promoteLikeToMatch]);
 
   const ensureConversation = useCallback(async (thread) => {
     if (!thread) return null;

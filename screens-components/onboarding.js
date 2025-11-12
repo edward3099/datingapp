@@ -14,6 +14,7 @@ import {
   Modal,
   ScrollView,
   Linking,
+  Platform,
 } from 'react-native'
 import { useNavigation } from '@react-navigation/native'
 import { useAuth } from '../contexts/AuthContext'
@@ -30,6 +31,11 @@ const LOCATION_OPTIONS = [
   { country: 'Australia', cities: ['Sydney', 'Melbourne', 'Brisbane', 'Perth', 'Adelaide'] },
   { country: 'Germany', cities: ['Berlin', 'Munich', 'Hamburg', 'Frankfurt', 'Cologne'] },
 ]
+
+const MIN_DISCOVERY_AGE = 18
+const MAX_DISCOVERY_AGE = 99
+const DEFAULT_PREFERRED_MIN = 21
+const DEFAULT_PREFERRED_MAX = 40
 
 const formatLocation = (value = '') =>
   value
@@ -67,6 +73,12 @@ export default function Onboarding() {
   const [countryModalVisible, setCountryModalVisible] = useState(false)
   const [cityModalVisible, setCityModalVisible] = useState(false)
   const [interests, setInterests] = useState([])
+  const [preferredGender, setPreferredGender] = useState('')
+  const [preferredMinAge, setPreferredMinAge] = useState('')
+  const [preferredMaxAge, setPreferredMaxAge] = useState('')
+  const [agePickerVisible, setAgePickerVisible] = useState(false)
+  const [agePickerType, setAgePickerType] = useState(null)
+  const agePickerScrollRef = useRef(null)
   const [sparkles, setSparkles] = useState([])
   const [validationError, setValidationError] = useState('')
   const [saving, setSaving] = useState(false)
@@ -86,6 +98,7 @@ export default function Onboarding() {
     { title: 'welcome to emote', subtitle: 'let’s begin your journey' },
     { title: 'your name', subtitle: 'tell us what to call you' },
     { title: 'age & gender', subtitle: 'just to personalise things' },
+    { title: 'who you’re looking for', subtitle: 'set your discovery preferences' },
     { title: 'bio & interests', subtitle: 'let others know your vibe' },
     { title: 'ready to start?', subtitle: 'review and continue' },
     { title: 'one last step', subtitle: 'accept our terms to continue' },
@@ -105,6 +118,18 @@ export default function Onboarding() {
     const existingAge = authProfile.age ? String(authProfile.age) : ''
     const existingBio = authProfile.bio || ''
     const existingGender = authProfile.gender || authProfile.gender_identity || ''
+    const existingPreferredGender =
+      authProfile.preferred_gender || authProfile.discovery_gender || authProfile.preferred_partner_gender || ''
+    const existingPreferredMin =
+      authProfile.preferred_min_age ??
+      authProfile.discovery_min_age ??
+      authProfile.min_preferred_age ??
+      ''
+    const existingPreferredMax =
+      authProfile.preferred_max_age ??
+      authProfile.discovery_max_age ??
+      authProfile.max_preferred_age ??
+      ''
     const existingTags = Array.isArray(authProfile.tags)
       ? authProfile.tags
           .map((tag) => (typeof tag === 'string' ? tag.trim().toLowerCase() : ''))
@@ -115,6 +140,11 @@ export default function Onboarding() {
     if (existingAge) setAge(existingAge)
     if (existingBio) setBio(existingBio)
     if (existingGender) setGender(existingGender)
+    if (existingPreferredGender) {
+      setPreferredGender(String(existingPreferredGender).toLowerCase() || 'any')
+    }
+    if (existingPreferredMin !== '') setPreferredMinAge(String(existingPreferredMin))
+    if (existingPreferredMax !== '') setPreferredMaxAge(String(existingPreferredMax))
     if (existingTags.length) setInterests(existingTags)
     if (authProfile?.location) {
       const { city: parsedCity, country: parsedCountry } = parseLocation(authProfile.location)
@@ -166,9 +196,13 @@ export default function Onboarding() {
     const parsedAge = parseInt(age, 10)
     const normalizedBio = bio.trim()
     const hasValidAge = !Number.isNaN(parsedAge) && parsedAge > 0
-    const hasSufficientAge = hasValidAge && parsedAge >= 18
+    const hasSufficientAge = hasValidAge && parsedAge >= MIN_DISCOVERY_AGE
     const hasInterests = interests.some((interest) => interest && interest.trim().length > 0)
     const hasLocationSelection = selectedCountry && selectedCity
+    const parsedPrefMin = parseInt(preferredMinAge, 10)
+    const parsedPrefMax = parseInt(preferredMaxAge, 10)
+    const effectivePrefMin = Number.isNaN(parsedPrefMin) ? DEFAULT_PREFERRED_MIN : parsedPrefMin
+    const effectivePrefMax = Number.isNaN(parsedPrefMax) ? DEFAULT_PREFERRED_MAX : parsedPrefMax
 
     if (step === 1) {
       if (!trimmedName) return 'Please enter your name to continue.'
@@ -176,23 +210,44 @@ export default function Onboarding() {
     }
     if (step === 2) {
       if (!hasValidAge) return 'Please enter a valid age.'
-      if (!hasSufficientAge) return 'You must be at least 18 years old to continue.'
+      if (!hasSufficientAge)
+        return `You must be at least ${MIN_DISCOVERY_AGE} years old to continue.`
       if (!gender) return 'Select the gender you identify with.'
     }
     if (step === 3) {
+      if (!preferredGender) return 'Select who you’d like to see.'
+      if (effectivePrefMin < MIN_DISCOVERY_AGE)
+        return `Minimum age must be at least ${MIN_DISCOVERY_AGE}.`
+      if (effectivePrefMax < effectivePrefMin)
+        return 'Maximum age must be greater than or equal to minimum age.'
+      if (effectivePrefMax > MAX_DISCOVERY_AGE)
+        return `Maximum age must be ${MAX_DISCOVERY_AGE} or less.`
+    }
+    if (step === 4) {
       if (!normalizedBio) return 'Share a short bio so matches can get to know you.'
       if (normalizedBio.length < 20) return 'Your bio should be at least 20 characters.'
       if (!hasLocationSelection) return 'Select your city and country.'
       if (!hasInterests) return 'Pick at least one interest to continue.'
       if (interests.length > MAX_INTERESTS) return `Choose up to ${MAX_INTERESTS} interests.`
     }
-    if (step === 4) {
-      if (!trimmedName || !hasSufficientAge || !gender || !normalizedBio || !hasLocationSelection || !hasInterests) {
+    if (step === 5) {
+      if (
+        !trimmedName ||
+        !hasSufficientAge ||
+        !gender ||
+        !normalizedBio ||
+        !hasLocationSelection ||
+        !hasInterests ||
+        !preferredGender ||
+        effectivePrefMin < MIN_DISCOVERY_AGE ||
+        effectivePrefMax > MAX_DISCOVERY_AGE ||
+        effectivePrefMax < effectivePrefMin
+      ) {
         return 'Looks like something is missing above—please review your info.'
       }
       if (interests.length > MAX_INTERESTS) return `Choose up to ${MAX_INTERESTS} interests.`
     }
-    if (step === 5) {
+    if (step === 6) {
       if (!termsAccepted) return 'Please review and accept the Terms of Use / EULA to continue.'
     }
     return ''
@@ -261,6 +316,15 @@ export default function Onboarding() {
           .filter(Boolean)
       )
     )
+    const { min: normalizedPrefMin, max: normalizedPrefMax } = normalizeDiscoveryRange(
+      preferredMinAge,
+      preferredMaxAge
+    )
+    const resolvedPrefMin = parseInt(normalizedPrefMin, 10)
+    const resolvedPrefMax = parseInt(normalizedPrefMax, 10)
+    const normalizedPreferredGender =
+      preferredGender && typeof preferredGender === 'string' ? preferredGender.toLowerCase() : 'any'
+    const storedPreferredGender = normalizedPreferredGender === 'any' ? null : normalizedPreferredGender
 
     try {
       const updates = {
@@ -282,6 +346,15 @@ export default function Onboarding() {
         } else if (Object.prototype.hasOwnProperty.call(authProfile, 'gender_identity')) {
           updates.gender_identity = gender || null
         }
+        if (Object.prototype.hasOwnProperty.call(authProfile, 'preferred_gender')) {
+          updates.preferred_gender = storedPreferredGender
+        }
+        if (Object.prototype.hasOwnProperty.call(authProfile, 'preferred_min_age')) {
+          updates.preferred_min_age = resolvedPrefMin
+        }
+        if (Object.prototype.hasOwnProperty.call(authProfile, 'preferred_max_age')) {
+          updates.preferred_max_age = resolvedPrefMax
+        }
       }
 
       const { profile: updatedProfile, error } = await updateProfileContext(updates)
@@ -289,6 +362,17 @@ export default function Onboarding() {
 
       const { error: interestsError } = await profileService.updateInterests(normalizedInterests)
       if (interestsError) throw interestsError
+
+      const { error: preferencesError } = await profileService.updatePreferences({
+        show_me: storedPreferredGender ? [storedPreferredGender] : ['any'],
+        age_min: resolvedPrefMin,
+        age_max: resolvedPrefMax,
+      })
+      if (preferencesError) {
+        logger.warn?.('Onboarding preferences save error', {
+          error: preferencesError?.message || String(preferencesError),
+        })
+      }
 
       await refreshProfile?.()
       if (updatedProfile) {
@@ -340,6 +424,120 @@ export default function Onboarding() {
   const handleGenderSelect = (value) => {
     setGender(value)
     if (validationError) setValidationError('')
+  }
+
+  const handlePreferredGenderSelect = (value) => {
+    setPreferredGender(value)
+    if (validationError) setValidationError('')
+  }
+
+  const handlePreferredMinAgeChange = (value) => {
+    const num = value.replace(/[^0-9]/g, '')
+    if (num === '') {
+      setPreferredMinAge('')
+    } else {
+      const parsed = parseInt(num, 10)
+      const currentMax = preferredMaxAge ? parseInt(preferredMaxAge, 10) : DEFAULT_PREFERRED_MAX
+      if (parsed <= currentMax && parsed >= MIN_DISCOVERY_AGE) {
+        setPreferredMinAge(num)
+      } else if (num.length <= 2) {
+        // Allow typing partial numbers (e.g., "2" before "21")
+        setPreferredMinAge(num)
+      }
+    }
+    if (validationError) setValidationError('')
+  }
+
+  const handlePreferredMaxAgeChange = (value) => {
+    const num = value.replace(/[^0-9]/g, '')
+    if (num === '') {
+      setPreferredMaxAge('')
+    } else {
+      const parsed = parseInt(num, 10)
+      const currentMin = preferredMinAge ? parseInt(preferredMinAge, 10) : DEFAULT_PREFERRED_MIN
+      if (parsed >= currentMin && parsed <= MAX_DISCOVERY_AGE) {
+        setPreferredMaxAge(num)
+      } else if (num.length <= 2) {
+        // Allow typing partial numbers (e.g., "4" before "40")
+        setPreferredMaxAge(num)
+      }
+    }
+    if (validationError) setValidationError('')
+  }
+
+  const openAgePicker = (type) => {
+    setAgePickerType(type)
+    setAgePickerVisible(true)
+    // Scroll to selected age after modal opens
+    setTimeout(() => {
+      const currentAge = type === 'min' ? preferredMinAge : preferredMaxAge
+      const ageValue = currentAge ? parseInt(currentAge, 10) : (type === 'min' ? DEFAULT_PREFERRED_MIN : DEFAULT_PREFERRED_MAX)
+      if (ageValue >= MIN_DISCOVERY_AGE && ageValue <= MAX_DISCOVERY_AGE && agePickerScrollRef.current) {
+        const index = ageValue - MIN_DISCOVERY_AGE
+        const itemHeight = 50 // Approximate height of each option
+        agePickerScrollRef.current.scrollTo({
+          y: index * itemHeight,
+          animated: true,
+        })
+      }
+    }, 100)
+  }
+
+  const selectAge = (selectedAge) => {
+    if (agePickerType === 'min') {
+      const currentMax = preferredMaxAge ? parseInt(preferredMaxAge, 10) : DEFAULT_PREFERRED_MAX
+      if (selectedAge > currentMax) {
+        // If min is greater than max, also update max to be at least equal to min
+        setPreferredMaxAge(String(selectedAge))
+      }
+      setPreferredMinAge(String(selectedAge))
+    } else if (agePickerType === 'max') {
+      const currentMin = preferredMinAge ? parseInt(preferredMinAge, 10) : DEFAULT_PREFERRED_MIN
+      if (selectedAge < currentMin) {
+        // If max is less than min, also update min to be at most equal to max
+        setPreferredMinAge(String(selectedAge))
+      }
+      setPreferredMaxAge(String(selectedAge))
+    }
+    setAgePickerVisible(false)
+    setAgePickerType(null)
+    if (validationError) setValidationError('')
+  }
+
+  const normalizeDiscoveryRange = (rawMin, rawMax) => {
+    const parsedMin = parseInt(rawMin, 10)
+    const parsedMax = parseInt(rawMax, 10)
+
+    let sanitizedMin = Number.isNaN(parsedMin) ? DEFAULT_PREFERRED_MIN : parsedMin
+    sanitizedMin = Math.max(MIN_DISCOVERY_AGE, Math.min(MAX_DISCOVERY_AGE, sanitizedMin))
+
+    let sanitizedMax = Number.isNaN(parsedMax) ? DEFAULT_PREFERRED_MAX : parsedMax
+    sanitizedMax = Math.max(sanitizedMin, Math.min(MAX_DISCOVERY_AGE, sanitizedMax))
+
+    return {
+      min: String(sanitizedMin),
+      max: String(sanitizedMax),
+    }
+  }
+
+  const handlePreferredMinAgeEndEditing = () => {
+    // Validate on blur - ensure it's within valid range
+    const parsed = parseInt(preferredMinAge, 10)
+    const currentMax = preferredMaxAge ? parseInt(preferredMaxAge, 10) : DEFAULT_PREFERRED_MAX
+    if (preferredMinAge && (Number.isNaN(parsed) || parsed < MIN_DISCOVERY_AGE || parsed > currentMax)) {
+      const { min } = normalizeDiscoveryRange(preferredMinAge, preferredMaxAge)
+      setPreferredMinAge(min)
+    }
+  }
+
+  const handlePreferredMaxAgeEndEditing = () => {
+    // Validate on blur - ensure it's within valid range
+    const parsed = parseInt(preferredMaxAge, 10)
+    const currentMin = preferredMinAge ? parseInt(preferredMinAge, 10) : DEFAULT_PREFERRED_MIN
+    if (preferredMaxAge && (Number.isNaN(parsed) || parsed < currentMin || parsed > MAX_DISCOVERY_AGE)) {
+      const { max } = normalizeDiscoveryRange(preferredMinAge, preferredMaxAge)
+      setPreferredMaxAge(max)
+    }
   }
 
   const handleBioChange = (value) => {
@@ -418,6 +616,9 @@ export default function Onboarding() {
     outputRange: ['0%', '100%'],
   })
 
+  const displayPreferredMinAge = preferredMinAge || String(DEFAULT_PREFERRED_MIN)
+  const displayPreferredMaxAge = preferredMaxAge || String(DEFAULT_PREFERRED_MAX)
+
   return (
     <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
       <Animated.View style={[styles.container, { backgroundColor }]}>
@@ -474,6 +675,172 @@ export default function Onboarding() {
            )}
 
           {index === 3 && (
+            <View style={styles.preferencesCard}>
+              <Text style={styles.preferenceTitle}>Who are you hoping to match with?</Text>
+              <View style={styles.genderTagRow}>
+                {['male', 'female', 'other'].map((option) => {
+                  const isActive = preferredGender === option
+                  return (
+                    <Pressable
+                      key={option}
+                      onPress={() => handlePreferredGenderSelect(option)}
+                      style={[styles.genderTag, isActive && styles.genderTagActive]}
+                    >
+                      <Text style={[styles.genderTagText, isActive && styles.genderTagTextActive]}>{option}</Text>
+                    </Pressable>
+                  )
+                })}
+              </View>
+              <Text style={[styles.preferenceTitle, { marginTop: 22 }]}>Preferred age range</Text>
+              <View style={styles.preferenceAgeRow}>
+                <View style={styles.preferenceAgeField}>
+                  <Text style={styles.preferenceAgeLabel}>Min</Text>
+                  <View style={[
+                    styles.preferenceAgeInputContainer,
+                    validationError &&
+                      validationError.toLowerCase().includes('min') &&
+                      styles.preferenceAgeInputInvalid,
+                  ]}>
+                    <TextInput
+                      value={preferredMinAge}
+                      onChangeText={handlePreferredMinAgeChange}
+                      onBlur={handlePreferredMinAgeEndEditing}
+                      keyboardType="number-pad"
+                      style={styles.preferenceAgeInputInner}
+                      maxLength={2}
+                      placeholder={String(DEFAULT_PREFERRED_MIN)}
+                      placeholderTextColor="#8EA1B8"
+                      selectionColor="#063970"
+                      underlineColorAndroid="transparent"
+                      spellCheck={false}
+                      autoCorrect={false}
+                      autoComplete="off"
+                      textContentType="none"
+                      autoCapitalize="none"
+                      importantForAutofill="no"
+                      textAlign="center"
+                      keyboardAppearance="light"
+                      returnKeyType="done"
+                      blurOnSubmit={true}
+                    />
+                  </View>
+                </View>
+                <Text style={styles.preferenceAgeSeparator}>to</Text>
+                <View style={styles.preferenceAgeField}>
+                  <Text style={styles.preferenceAgeLabel}>Max</Text>
+                  <View style={[
+                    styles.preferenceAgeInputContainer,
+                    validationError &&
+                      validationError.toLowerCase().includes('max') &&
+                      styles.preferenceAgeInputInvalid,
+                  ]}>
+                    <TextInput
+                      value={preferredMaxAge}
+                      onChangeText={handlePreferredMaxAgeChange}
+                      onBlur={handlePreferredMaxAgeEndEditing}
+                      keyboardType="number-pad"
+                      style={styles.preferenceAgeInputInner}
+                      maxLength={2}
+                      placeholder={String(DEFAULT_PREFERRED_MAX)}
+                      placeholderTextColor="#8EA1B8"
+                      selectionColor="#063970"
+                      underlineColorAndroid="transparent"
+                      spellCheck={false}
+                      autoCorrect={false}
+                      autoComplete="off"
+                      textContentType="none"
+                      autoCapitalize="none"
+                      importantForAutofill="no"
+                      textAlign="center"
+                      keyboardAppearance="light"
+                      returnKeyType="done"
+                      blurOnSubmit={true}
+                    />
+                  </View>
+                </View>
+              </View>
+              <Text style={styles.preferenceHint}>We'll use this to tailor your discovery filters.</Text>
+              
+              <Modal
+                visible={agePickerVisible}
+                transparent={true}
+                animationType="slide"
+                onRequestClose={() => {
+                  setAgePickerVisible(false)
+                  setAgePickerType(null)
+                }}
+              >
+                <TouchableWithoutFeedback onPress={() => {
+                  setAgePickerVisible(false)
+                  setAgePickerType(null)
+                }}>
+                  <View style={styles.agePickerModalOverlay}>
+                    <TouchableWithoutFeedback>
+                      <View style={styles.agePickerModalContent}>
+                        <View style={styles.agePickerHeader}>
+                          <Text style={styles.agePickerTitle}>
+                            Select {agePickerType === 'min' ? 'Minimum' : 'Maximum'} Age
+                          </Text>
+                          <Pressable
+                            onPress={() => {
+                              setAgePickerVisible(false)
+                              setAgePickerType(null)
+                            }}
+                            style={styles.agePickerCloseButton}
+                          >
+                            <Text style={styles.agePickerCloseText}>Done</Text>
+                          </Pressable>
+                        </View>
+                        <ScrollView
+                          ref={agePickerScrollRef}
+                          style={styles.agePickerScrollView}
+                          contentContainerStyle={styles.agePickerScrollContent}
+                          showsVerticalScrollIndicator={true}
+                        >
+                          {Array.from({ length: MAX_DISCOVERY_AGE - MIN_DISCOVERY_AGE + 1 }, (_, i) => {
+                            const age = MIN_DISCOVERY_AGE + i
+                            const isSelected = agePickerType === 'min'
+                              ? preferredMinAge === String(age)
+                              : preferredMaxAge === String(age)
+                            
+                            // Validation: min can't be greater than current max, max can't be less than current min
+                            const currentMin = preferredMinAge ? parseInt(preferredMinAge, 10) : DEFAULT_PREFERRED_MIN
+                            const currentMax = preferredMaxAge ? parseInt(preferredMaxAge, 10) : DEFAULT_PREFERRED_MAX
+                            const isDisabled = agePickerType === 'min'
+                              ? age > currentMax
+                              : age < currentMin
+                            
+                            return (
+                              <Pressable
+                                key={age}
+                                onPress={() => !isDisabled && selectAge(age)}
+                                disabled={isDisabled}
+                                style={[
+                                  styles.agePickerOption,
+                                  isSelected && styles.agePickerOptionSelected,
+                                  isDisabled && styles.agePickerOptionDisabled
+                                ]}
+                              >
+                                <Text style={[
+                                  styles.agePickerOptionText,
+                                  isSelected && styles.agePickerOptionTextSelected,
+                                  isDisabled && styles.agePickerOptionTextDisabled
+                                ]}>
+                                  {age}
+                                </Text>
+                              </Pressable>
+                            )
+                          })}
+                        </ScrollView>
+                      </View>
+                    </TouchableWithoutFeedback>
+                  </View>
+                </TouchableWithoutFeedback>
+              </Modal>
+            </View>
+          )}
+
+          {index === 4 && (
             <View style={styles.bioContainer}>
               <TextInput
                 placeholder="write a short bio..."
@@ -524,11 +891,17 @@ export default function Onboarding() {
             </View>
           )}
 
-          {index === 4 && (
+          {index === 5 && (
             <View style={styles.summary}>
               <Text style={styles.summaryText}>name: {name || '-'}</Text>
               <Text style={styles.summaryText}>age: {age || '-'}</Text>
               <Text style={styles.summaryText}>gender: {gender || '-'}</Text>
+              <Text style={styles.summaryText}>
+                looking for: {preferredGender && preferredGender !== 'any' ? preferredGender : 'anyone'}
+              </Text>
+              <Text style={styles.summaryText}>
+                age range: {`${displayPreferredMinAge}-${displayPreferredMaxAge}`}
+              </Text>
               <Text style={styles.summaryText}>bio: {bio || '-'}</Text>
               <Text style={styles.summaryText}>
                 location:{' '}
@@ -551,7 +924,7 @@ export default function Onboarding() {
             </View>
           )}
 
-          {index === 5 && (
+          {index === 6 && (
             <View style={styles.termsCard}>
               <Text style={styles.termsTitle}>One last step</Text>
               <Text style={styles.termsSubtitle}>
@@ -1132,6 +1505,135 @@ const styles = StyleSheet.create({
   },
   genderTagTextActive: {
     color: '#fff',
+  },
+  preferencesCard: {
+    width: '100%',
+    alignItems: 'center',
+  },
+  preferenceTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#063970',
+    textAlign: 'center',
+  },
+  preferenceAgeRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    justifyContent: 'center',
+    marginTop: 16,
+  },
+  preferenceAgeField: {
+    alignItems: 'center',
+    width: 90,
+  },
+  preferenceAgeLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#4F5D75',
+    marginBottom: 6,
+    textTransform: 'uppercase',
+  },
+  preferenceAgeInputContainer: {
+    width: '100%',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    backgroundColor: '#F8FBFF',
+    minHeight: 40,
+    overflow: 'hidden',
+  },
+  preferenceAgeInputInner: {
+    flex: 1,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    minHeight: 40,
+    width: '100%',
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#063970',
+    textAlign: 'center',
+    borderWidth: 0,
+    backgroundColor: 'transparent',
+  },
+  preferenceAgeInputInvalid: {
+    borderColor: '#FF5A5F',
+  },
+  agePickerModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
+  },
+  agePickerModalContent: {
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    maxHeight: '70%',
+    paddingBottom: Platform.OS === 'ios' ? 34 : 20,
+  },
+  agePickerHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E0E6ED',
+  },
+  agePickerTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#063970',
+  },
+  agePickerCloseButton: {
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+  },
+  agePickerCloseText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#007AFF',
+  },
+  agePickerScrollView: {
+    maxHeight: 400,
+  },
+  agePickerScrollContent: {
+    paddingVertical: 10,
+  },
+  agePickerOption: {
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F0F0F0',
+  },
+  agePickerOptionSelected: {
+    backgroundColor: '#E8F6FF',
+  },
+  agePickerOptionText: {
+    fontSize: 16,
+    color: '#063970',
+    textAlign: 'center',
+  },
+  agePickerOptionTextSelected: {
+    color: '#007AFF',
+    fontWeight: '700',
+  },
+  agePickerOptionDisabled: {
+    opacity: 0.3,
+  },
+  agePickerOptionTextDisabled: {
+    color: '#8EA1B8',
+  },
+  preferenceAgeSeparator: {
+    marginHorizontal: 16,
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#063970',
+  },
+  preferenceHint: {
+    marginTop: 20,
+    fontSize: 13,
+    color: '#4F5D75',
+    textAlign: 'center',
   },
 })
 

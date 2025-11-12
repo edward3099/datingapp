@@ -84,6 +84,30 @@ export const authService = {
       logger.info('User signed in', { userId: data.user?.id });
       return { user: data.user, session: data.session, error: null };
     } catch (error) {
+      const normalizedCode =
+        error?.code ||
+        (typeof error?.message === 'string' && error.message.toLowerCase().includes('invalid login')
+          ? 'invalid_credentials'
+          : undefined);
+
+      if (normalizedCode === 'invalid_credentials') {
+        logger.warn?.('Sign in rejected: invalid credentials', {
+          email,
+          status: error?.status ?? 400,
+        });
+
+        return {
+          user: null,
+          session: null,
+          error: {
+            message: 'Invalid login credentials',
+            code: 'invalid_credentials',
+            status: error?.status ?? 400,
+            isRecoverable: true,
+          },
+        };
+      }
+
       logger.error('Sign in error', { 
         error: error.message,
         code: error.code,
