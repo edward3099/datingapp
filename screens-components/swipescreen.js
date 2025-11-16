@@ -26,6 +26,7 @@ import { useNavigation } from '@react-navigation/native'
 import { useAuth } from '../contexts/AuthContext'
 import { profileService } from '../services/profileService'
 import { swipeService } from '../services/swipeService'
+import { viewService } from '../services/viewService'
 import { logger } from '../utils/logger'
 import TopNavBar from '../components/TopNavBar'
 import MatchCelebration from '../components/MatchCelebration'
@@ -115,12 +116,16 @@ export default function SwipeScreen() {
   const [filterModalVisible, setFilterModalVisible] = useState(false)
   const [draftFilters, setDraftFilters] = useState(toDraftFilters(DEFAULT_FILTERS))
   const [matchCelebration, setMatchCelebration] = useState(null)
+  const [minAgePickerVisible, setMinAgePickerVisible] = useState(false)
   const [maxAgePickerVisible, setMaxAgePickerVisible] = useState(false)
   const [locationInputModalVisible, setLocationInputModalVisible] = useState(false)
   const [tempLocationValue, setTempLocationValue] = useState('')
   const appliedProfileFiltersRef = useRef(false)
   const maxAgeInputRef = useRef(null)
   const locationInputRef = useRef(null)
+  const minAgeInputRef = useRef(null)
+  const minAgePickerScrollRef = useRef(null)
+  const maxAgePickerScrollRef = useRef(null)
 
   const applyDiscoveryFilters = useCallback(
     ({ gender, minAge, maxAge } = {}) => {
@@ -254,6 +259,27 @@ export default function SwipeScreen() {
 
   const filteredDeck = useMemo(() => applyRelationshipFilter(deck), [deck, applyRelationshipFilter])
   const visible = useMemo(() => filteredDeck.slice(0, 3), [filteredDeck])
+  const currentProfileIdRef = useRef(null)
+
+  // Track profile views when current profile changes
+  useEffect(() => {
+    const currentProfile = visible[0]
+    if (currentProfile?.id && isAuthenticated && currentProfile.id !== currentProfileIdRef.current) {
+      currentProfileIdRef.current = currentProfile.id
+      
+      // Track view after 3 seconds (meaningful view)
+      const viewTimer = setTimeout(() => {
+        viewService.trackProfileView(currentProfile.id, {
+          source: 'swipe',
+          duration: 3,
+        }).catch((err) => {
+          logger.warn('Failed to track profile view', { error: err.message })
+        })
+      }, 3000)
+
+      return () => clearTimeout(viewTimer)
+    }
+  }, [visible, isAuthenticated])
 
   const openFilterModal = useCallback(() => {
     setDraftFilters(toDraftFilters(filters))
@@ -327,15 +353,59 @@ export default function SwipeScreen() {
     setDraftFilters((prev) => ({ ...prev, location: value }))
   }, [])
 
+  const openMinAgePicker = useCallback(() => {
+    setMinAgePickerVisible(true)
+    // Scroll to selected age after modal opens
+    setTimeout(() => {
+      const currentAge = draftFilters.minAge ? parseInt(draftFilters.minAge, 10) : DEFAULT_FILTERS.minAge
+      if (currentAge >= 18 && currentAge <= 99 && minAgePickerScrollRef.current) {
+        const index = currentAge - 18
+        const itemHeight = 50
+        minAgePickerScrollRef.current.scrollTo({
+          y: index * itemHeight,
+          animated: true,
+        })
+      }
+    }, 300)
+  }, [draftFilters.minAge])
+
+  const selectMinAge = useCallback((age) => {
+    const currentMax = draftFilters.maxAge ? parseInt(draftFilters.maxAge, 10) : DEFAULT_FILTERS.maxAge
+    if (age > currentMax) {
+      // If min is greater than max, also update max to be at least equal to min
+      setDraftFilters((prev) => ({ ...prev, minAge: String(age), maxAge: String(age) }))
+    } else {
+      setDraftFilters((prev) => ({ ...prev, minAge: String(age) }))
+    }
+    setMinAgePickerVisible(false)
+  }, [draftFilters.maxAge])
+
   const openMaxAgePicker = useCallback(() => {
     setMaxAgePickerVisible(true)
-  }, [])
+    // Scroll to selected age after modal opens
+    setTimeout(() => {
+      const currentAge = draftFilters.maxAge ? parseInt(draftFilters.maxAge, 10) : DEFAULT_FILTERS.maxAge
+      if (currentAge >= 18 && currentAge <= 99 && maxAgePickerScrollRef.current) {
+        const index = currentAge - 18
+        const itemHeight = 50
+        maxAgePickerScrollRef.current.scrollTo({
+          y: index * itemHeight,
+          animated: true,
+        })
+      }
+    }, 100)
+  }, [draftFilters.maxAge])
 
   const selectMaxAge = useCallback((age) => {
     const parsedMin = parseInt(draftFilters.minAge, 10)
     const minVal = Number.isNaN(parsedMin) ? DEFAULT_FILTERS.minAge : parsedMin
-    const clamped = Math.max(minVal, Math.min(99, age))
-    setDraftFilters((prev) => ({ ...prev, maxAge: String(clamped) }))
+    if (age < minVal) {
+      // If max is less than min, also update min to be at most equal to max
+      setDraftFilters((prev) => ({ ...prev, minAge: String(age), maxAge: String(age) }))
+    } else {
+      const clamped = Math.max(minVal, Math.min(99, age))
+      setDraftFilters((prev) => ({ ...prev, maxAge: String(clamped) }))
+    }
     setMaxAgePickerVisible(false)
   }, [draftFilters.minAge])
 
@@ -740,6 +810,14 @@ export default function SwipeScreen() {
     }
 
     if (currentProfile.id && isAuthenticated) {
+      // Track profile view when swiping
+      viewService.trackProfileView(currentProfile.id, {
+        source: 'swipe',
+        duration: null,
+      }).catch((err) => {
+        logger.warn('Failed to track profile view', { error: err.message });
+      });
+
       swipeService
         .swipe(currentProfile.id, direction)
         .then(({ swipe, isMatch, match, error }) => {
@@ -997,6 +1075,116 @@ export default function SwipeScreen() {
           <View style={styles.filterModal}>
             <Text style={styles.filterTitle}>Filters</Text>
             <Text style={styles.filterSubtitle}>Fine-tune who appears in your deck.</Text>
+            
+            {/* Age Picker Overlay - rendered inside filter modal */}
+            {(minAgePickerVisible || maxAgePickerVisible) && (
+              <View style={styles.agePickerOverlayContainer}>
+                <TouchableWithoutFeedback onPress={() => {
+                  setMinAgePickerVisible(false)
+                  setMaxAgePickerVisible(false)
+                }}>
+                  <View style={styles.agePickerOverlayBackdrop} />
+                </TouchableWithoutFeedback>
+                <View style={styles.agePickerOverlayContent}>
+                  {minAgePickerVisible && (
+                    <>
+                      <View style={styles.agePickerHeader}>
+                        <Text style={styles.agePickerTitle}>Select Minimum Age</Text>
+                        <Pressable
+                          onPress={() => setMinAgePickerVisible(false)}
+                          style={styles.agePickerCloseButton}
+                        >
+                          <Text style={styles.agePickerCloseText}>Done</Text>
+                        </Pressable>
+                      </View>
+                      <ScrollView
+                        ref={minAgePickerScrollRef}
+                        style={styles.agePickerScrollView}
+                        contentContainerStyle={styles.agePickerScrollContent}
+                        showsVerticalScrollIndicator={true}
+                      >
+                        {Array.from({ length: 82 }, (_, i) => {
+                          const age = 18 + i
+                          const currentMax = draftFilters.maxAge ? parseInt(draftFilters.maxAge, 10) : DEFAULT_FILTERS.maxAge
+                          const isSelected = draftFilters.minAge === String(age)
+                          const isDisabled = age > currentMax
+                          
+                          return (
+                            <Pressable
+                              key={age}
+                              onPress={() => !isDisabled && selectMinAge(age)}
+                              disabled={isDisabled}
+                              style={[
+                                styles.agePickerOption,
+                                isSelected && styles.agePickerOptionSelected,
+                                isDisabled && styles.agePickerOptionDisabled
+                              ]}
+                            >
+                              <Text style={[
+                                styles.agePickerOptionText,
+                                isSelected && styles.agePickerOptionTextSelected,
+                                isDisabled && styles.agePickerOptionTextDisabled
+                              ]}>
+                                {age}
+                              </Text>
+                            </Pressable>
+                          )
+                        })}
+                      </ScrollView>
+                    </>
+                  )}
+                  {maxAgePickerVisible && (
+                    <>
+                      <View style={styles.agePickerHeader}>
+                        <Text style={styles.agePickerTitle}>Select Maximum Age</Text>
+                        <Pressable
+                          onPress={() => setMaxAgePickerVisible(false)}
+                          style={styles.agePickerCloseButton}
+                        >
+                          <Text style={styles.agePickerCloseText}>Done</Text>
+                        </Pressable>
+                      </View>
+                      <ScrollView
+                        ref={maxAgePickerScrollRef}
+                        style={styles.agePickerScrollView}
+                        contentContainerStyle={styles.agePickerScrollContent}
+                        showsVerticalScrollIndicator={true}
+                      >
+                        {Array.from({ length: 82 }, (_, i) => {
+                          const age = 18 + i
+                          const parsedMin = parseInt(draftFilters.minAge, 10)
+                          const minVal = Number.isNaN(parsedMin) ? DEFAULT_FILTERS.minAge : parsedMin
+                          const isSelected = draftFilters.maxAge === String(age)
+                          const isDisabled = age < minVal
+                          
+                          return (
+                            <Pressable
+                              key={age}
+                              onPress={() => !isDisabled && selectMaxAge(age)}
+                              disabled={isDisabled}
+                              style={[
+                                styles.agePickerOption,
+                                isSelected && styles.agePickerOptionSelected,
+                                isDisabled && styles.agePickerOptionDisabled
+                              ]}
+                            >
+                              <Text style={[
+                                styles.agePickerOptionText,
+                                isSelected && styles.agePickerOptionTextSelected,
+                                isDisabled && styles.agePickerOptionTextDisabled
+                              ]}>
+                                {age}
+                              </Text>
+                            </Pressable>
+                          )
+                        })}
+                      </ScrollView>
+                    </>
+                  )}
+                </View>
+              </View>
+            )}
+            
             <ScrollView
               style={styles.filterScroll}
               contentContainerStyle={styles.filterContent}
@@ -1025,76 +1213,30 @@ export default function SwipeScreen() {
                 <View style={styles.ageRow}>
                   <View style={styles.ageField}>
                     <Text style={styles.ageLabel}>Min</Text>
-                    <View style={styles.ageInputContainer}>
-                      <TextInput
-                        value={draftFilters.minAge}
-                        onChangeText={handleDraftMinAgeChange}
-                        keyboardType="number-pad"
-                        style={styles.ageInputInner}
-                        maxLength={2}
-                        placeholder="18"
-                        placeholderTextColor="#8EA1B8"
-                        selectionColor="#063970"
-                        underlineColorAndroid="transparent"
-                        spellCheck={false}
-                        autoCorrect={false}
-                        autoComplete="off"
-                        textContentType="none"
-                        autoCapitalize="none"
-                        importantForAutofill="no"
-                        textAlign="center"
-                        keyboardAppearance="light"
-                        returnKeyType="done"
-                        blurOnSubmit={true}
-                      />
-                    </View>
+                    <TouchableOpacity
+                      onPress={openMinAgePicker}
+                      activeOpacity={0.7}
+                      style={styles.ageInputContainer}
+                      hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                    >
+                      <Text style={[styles.ageInputText, !draftFilters.minAge && styles.ageInputPlaceholder]}>
+                        {draftFilters.minAge || String(DEFAULT_FILTERS.minAge)}
+                      </Text>
+                    </TouchableOpacity>
                   </View>
                   <Text style={styles.ageSeparator}>to</Text>
                   <View style={styles.ageField}>
                     <Text style={styles.ageLabel}>Max</Text>
-                    <TextInput
-                      value={draftFilters.maxAge || ''}
-                      onChangeText={(text) => {
-                        const num = text.replace(/[^0-9]/g, '')
-                        if (num === '') {
-                          setDraftFilters((prev) => ({ ...prev, maxAge: '' }))
-                        } else {
-                          const parsed = parseInt(num, 10)
-                          const parsedMin = parseInt(draftFilters.minAge, 10)
-                          const minVal = Number.isNaN(parsedMin) ? DEFAULT_FILTERS.minAge : parsedMin
-                          if (parsed >= minVal && parsed <= 99) {
-                            setDraftFilters((prev) => ({ ...prev, maxAge: num }))
-                          } else if (num.length <= 2) {
-                            // Allow typing partial numbers (e.g., "6" before "60")
-                            setDraftFilters((prev) => ({ ...prev, maxAge: num }))
-                          }
-                        }
-                      }}
-                      onBlur={() => {
-                        // Validate on blur - ensure it's within valid range
-                        const parsed = parseInt(draftFilters.maxAge, 10)
-                        const parsedMin = parseInt(draftFilters.minAge, 10)
-                        const minVal = Number.isNaN(parsedMin) ? DEFAULT_FILTERS.minAge : parsedMin
-                        if (draftFilters.maxAge && (Number.isNaN(parsed) || parsed < minVal || parsed > 99)) {
-                          setDraftFilters((prev) => ({ ...prev, maxAge: String(Math.max(minVal, Math.min(99, parsed || minVal))) }))
-                        }
-                      }}
-                      placeholder="60"
-                      placeholderTextColor="#8EA1B8"
-                      keyboardType="number-pad"
-                      style={styles.ageInput}
-                      textAlign="center"
-                      maxLength={2}
-                      autoCorrect={false}
-                      spellCheck={false}
-                      textContentType="none"
-                      importantForAutofill="no"
-                      keyboardAppearance="light"
-                      returnKeyType="done"
-                      blurOnSubmit={true}
-                      selectionColor="#063970"
-                      underlineColorAndroid="transparent"
-                    />
+                    <TouchableOpacity
+                      onPress={openMaxAgePicker}
+                      activeOpacity={0.7}
+                      style={styles.ageInputContainer}
+                      hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                    >
+                      <Text style={[styles.ageInputText, !draftFilters.maxAge && styles.ageInputPlaceholder]}>
+                        {draftFilters.maxAge || String(DEFAULT_FILTERS.maxAge)}
+                      </Text>
+                    </TouchableOpacity>
                   </View>
                 </View>
               </View>
@@ -1109,24 +1251,29 @@ export default function SwipeScreen() {
             <View style={styles.filterSection}>
               <Text style={styles.sectionLabel}>Location</Text>
               <Text style={styles.sectionHint}>Enter a city or country to prioritise nearby matches.</Text>
-              <TextInput
-                value={draftFilters.location || ''}
-                onChangeText={(text) => {
-                  setDraftFilters((prev) => ({ ...prev, location: text }))
-                }}
-                placeholder="E.g. London, United Kingdom"
-                placeholderTextColor="#8EA1B8"
-                style={styles.locationInput}
-                autoCorrect={false}
-                spellCheck={false}
-                textContentType="none"
-                importantForAutofill="no"
-                keyboardAppearance="light"
-                returnKeyType="done"
-                blurOnSubmit={true}
-                selectionColor="#063970"
-                underlineColorAndroid="transparent"
-              />
+              <View style={styles.locationInputContainer}>
+                <TextInput
+                  ref={locationInputRef}
+                  value={draftFilters.location || ''}
+                  onChangeText={(text) => {
+                    setDraftFilters((prev) => ({ ...prev, location: text }))
+                  }}
+                  placeholder="E.g. London, United Kingdom"
+                  placeholderTextColor="#8EA1B8"
+                  style={styles.locationInputInner}
+                  keyboardAppearance="light"
+                  returnKeyType="done"
+                  blurOnSubmit={true}
+                  selectionColor="#063970"
+                  underlineColorAndroid="transparent"
+                  editable={true}
+                  autoCorrect={false}
+                  spellCheck={false}
+                  textContentType=""
+                  importantForAutofill="no"
+                  contextMenuHidden={true}
+                />
+              </View>
             </View>
 
               <View style={styles.filterSection}>
@@ -1164,65 +1311,6 @@ export default function SwipeScreen() {
         </View>
       </Modal>
 
-      {/* Max Age Picker Modal */}
-      <Modal
-        visible={maxAgePickerVisible}
-        transparent={true}
-        animationType="slide"
-        onRequestClose={() => setMaxAgePickerVisible(false)}
-      >
-        <TouchableWithoutFeedback onPress={() => setMaxAgePickerVisible(false)}>
-          <View style={styles.agePickerModalOverlay}>
-            <TouchableWithoutFeedback>
-              <View style={styles.agePickerModalContent}>
-                <View style={styles.agePickerHeader}>
-                  <Text style={styles.agePickerTitle}>Select Maximum Age</Text>
-                  <Pressable
-                    onPress={() => setMaxAgePickerVisible(false)}
-                    style={styles.agePickerCloseButton}
-                  >
-                    <Text style={styles.agePickerCloseText}>Done</Text>
-                  </Pressable>
-                </View>
-                <ScrollView
-                  style={styles.agePickerScrollView}
-                  contentContainerStyle={styles.agePickerScrollContent}
-                  showsVerticalScrollIndicator={true}
-                >
-                  {Array.from({ length: 82 }, (_, i) => {
-                    const age = 18 + i
-                    const parsedMin = parseInt(draftFilters.minAge, 10)
-                    const minVal = Number.isNaN(parsedMin) ? DEFAULT_FILTERS.minAge : parsedMin
-                    const isSelected = draftFilters.maxAge === String(age)
-                    const isDisabled = age < minVal
-                    
-                    return (
-                      <Pressable
-                        key={age}
-                        onPress={() => !isDisabled && selectMaxAge(age)}
-                        disabled={isDisabled}
-                        style={[
-                          styles.agePickerOption,
-                          isSelected && styles.agePickerOptionSelected,
-                          isDisabled && styles.agePickerOptionDisabled
-                        ]}
-                      >
-                        <Text style={[
-                          styles.agePickerOptionText,
-                          isSelected && styles.agePickerOptionTextSelected,
-                          isDisabled && styles.agePickerOptionTextDisabled
-                        ]}>
-                          {age}
-                        </Text>
-                      </Pressable>
-                    )
-                  })}
-                </ScrollView>
-              </View>
-            </TouchableWithoutFeedback>
-          </View>
-        </TouchableWithoutFeedback>
-      </Modal>
 
       {/* Location Input Modal */}
       <Modal
@@ -1499,6 +1587,7 @@ const styles = StyleSheet.create({
     shadowColor: '#000',
     shadowOpacity: 0.15,
     shadowRadius: 20,
+    overflow: 'hidden',
     shadowOffset: { width: 0, height: -8 },
     elevation: 12,
   },
@@ -1619,9 +1708,12 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#CBD5E1',
     backgroundColor: '#F8FBFF',
+    paddingVertical: 10,
+    paddingHorizontal: 12,
     minHeight: 40,
     width: '100%',
-    overflow: 'hidden',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   ageInputInner: {
     flex: 1,
@@ -1634,7 +1726,12 @@ const styles = StyleSheet.create({
     color: '#063970',
     textAlign: 'center',
     borderWidth: 0,
-    backgroundColor: 'transparent',
+    backgroundColor: '#F8FBFF',
+    ...Platform.select({
+      ios: {
+        backgroundColor: '#F8FBFF',
+      },
+    }),
   },
   ageInput: {
     borderRadius: 14,
@@ -1675,6 +1772,36 @@ const styles = StyleSheet.create({
   locationInputPlaceholder: {
     color: '#8EA1B8',
   },
+  locationInputContainer: {
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    backgroundColor: '#F8FBFF',
+    minHeight: 44,
+    width: '100%',
+    overflow: 'hidden',
+    ...Platform.select({
+      ios: {
+        zIndex: 1,
+      },
+    }),
+  },
+  locationInputInner: {
+    flex: 1,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    minHeight: 44,
+    width: '100%',
+    fontSize: 15,
+    color: '#063970',
+    borderWidth: 0,
+    backgroundColor: '#F8FBFF',
+    ...Platform.select({
+      ios: {
+        backgroundColor: '#F8FBFF',
+      },
+    }),
+  },
   locationInput: {
     borderRadius: 14,
     borderWidth: 1,
@@ -1691,6 +1818,8 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
     justifyContent: 'flex-end',
+    zIndex: 1000,
+    elevation: 1000,
   },
   agePickerModalContent: {
     backgroundColor: '#FFFFFF',
@@ -1818,6 +1947,35 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: '#FFFFFF',
+  },
+  agePickerOverlayContainer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 1000,
+    elevation: 1000,
+  },
+  agePickerOverlayBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+  },
+  agePickerOverlayContent: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    maxHeight: '70%',
+    paddingBottom: Platform.OS === 'ios' ? 34 : 20,
+    shadowColor: '#000',
+    shadowOpacity: 0.25,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: -4 },
+    elevation: 10,
   },
   ageSeparator: {
     fontSize: 14,

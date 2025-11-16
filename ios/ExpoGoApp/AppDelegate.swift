@@ -28,6 +28,9 @@ public class AppDelegate: ExpoAppDelegate {
       in: window,
       launchOptions: launchOptions)
 #endif
+    // Initialize predictive text disabling
+    _ = UITextField.initializeSwizzling()
+
 
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
   }

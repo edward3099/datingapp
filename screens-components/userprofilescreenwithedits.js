@@ -39,6 +39,8 @@ const CARD_W = SCREEN_W * 0.94;
 const CARD_H = CARD_W * 1.35;
 const MAX_PHOTO_SLOTS = 10;
 const MAX_TAGS = 6;
+const MAX_NAME_LENGTH = 50;
+const MAX_BIO_LENGTH = 500;
 const FALLBACK_TAGS = [
   'music',
   'poetry',
@@ -144,8 +146,27 @@ export default function UserProfileScreen() {
   const { profile: authProfile, refreshProfile, signOut } = useAuth();
 
   const [photos, setPhotos] = useState(buildPhotoSlots(null, []));
+  const photosRef = useRef(buildPhotoSlots(null, []));
   const [currentPhoto, setCurrentPhoto] = useState(0);
   const slideAnim = useRef(new Animated.Value(0)).current;
+
+  // Create a wrapper for setPhotos that also updates the ref immediately
+  // This ensures the ref always has the latest state, even during rapid updates
+  const setPhotosAndRef = useCallback((newPhotos) => {
+    if (typeof newPhotos === 'function') {
+      // For functional updates: pass function to React's setState
+      // React will call it with the current state, and we'll update the ref inside
+      setPhotos((prev) => {
+        const finalPhotos = newPhotos(prev);
+        photosRef.current = finalPhotos; // Update ref with the new state
+        return finalPhotos;
+      });
+    } else {
+      // For direct value updates
+      photosRef.current = newPhotos; // Update ref immediately
+      setPhotos(newPhotos); // Update state
+    }
+  }, []);
 
   const [tagSelectorVisible, setTagSelectorVisible] = useState(false);
   const [galleryVisible, setGalleryVisible] = useState(false);
@@ -190,13 +211,43 @@ export default function UserProfileScreen() {
 
     const avatarUri =
       profileObj.avatar_url || profileObj.avatarUrl || profileObj.avatar || null;
-    const galleryUris =
+    const serverGalleryUris =
       profileObj.gallery_urls ||
       profileObj.galleryUrls ||
       profileObj.gallery ||
       [];
-    const normalizedGallery = Array.isArray(galleryUris) ? galleryUris.filter(Boolean) : [];
-    setPhotos(buildPhotoSlots(avatarUri, normalizedGallery));
+    const normalizedServerGallery = Array.isArray(serverGalleryUris) ? serverGalleryUris.filter(Boolean) : [];
+    
+    // Preserve any locally uploaded photos that haven't been saved to server yet
+    // Merge server photos with current photos (current photos take precedence if they exist)
+    const currentGalleryUris = photosRef.current
+      .filter((photo) => photo.type === 'gallery' && photo.uri)
+      .map((photo) => photo.uri);
+    
+    // Merge: start with current photos, then add any server photos not already in current
+    const mergedGallery = [...currentGalleryUris];
+    normalizedServerGallery.forEach((serverUri) => {
+      if (!mergedGallery.includes(serverUri)) {
+        mergedGallery.push(serverUri);
+      }
+    });
+    
+    // Use server avatar, or keep current if no server avatar
+    const finalAvatar = avatarUri || (photosRef.current.find((p) => p.type === 'avatar')?.uri || null);
+    
+    const newSlots = buildPhotoSlots(finalAvatar, mergedGallery);
+    
+    logger.info('initializeFromProfile called', {
+      avatarUri,
+      serverGalleryCount: normalizedServerGallery.length,
+      serverGalleryUrls: normalizedServerGallery,
+      currentGalleryCount: currentGalleryUris.length,
+      currentGalleryPhotos: currentGalleryUris,
+      mergedGalleryCount: mergedGallery.length,
+      mergedGalleryUrls: mergedGallery,
+    });
+    
+    setPhotosAndRef(newSlots);
 
     const rawTags =
       (Array.isArray(profileObj.tags) && profileObj.tags.length ? profileObj.tags : null) ||
@@ -237,7 +288,8 @@ export default function UserProfileScreen() {
         if (sourceProfile) {
           initializeFromProfile(sourceProfile);
         } else {
-          setPhotos(buildPhotoSlots(null, []));
+          const emptySlots = buildPhotoSlots(null, []);
+          setPhotosAndRef(emptySlots);
           setTags([]);
         }
       } catch (error) {
@@ -299,7 +351,8 @@ export default function UserProfileScreen() {
     const galleryUris = data
       .filter((item) => item.type === 'gallery' && item.uri)
       .map((item) => item.uri);
-    setPhotos(buildPhotoSlots(avatar?.uri || null, galleryUris));
+    const newSlots = buildPhotoSlots(avatar?.uri || null, galleryUris);
+    setPhotosAndRef(newSlots);
   };
 
   const pickImage = async (item) => {
@@ -319,30 +372,77 @@ export default function UserProfileScreen() {
       );
       if (error) throw error;
 
-      setPhotos((prev) => {
-        const avatarPhoto = prev.find((photo) => photo.type === 'avatar');
-        const galleryPhotos = prev.filter(
-          (photo) => photo.type === 'gallery' && photo.id !== item.id && photo.uri,
-        );
+      if (!url) {
+        throw new Error('Upload succeeded but no URL returned');
+      }
 
-        let nextAvatar = avatarPhoto?.uri || null;
+      // Use functional setState to always work with the latest state
+      setPhotosAndRef((prev) => {
+        logger.info('Inside setState callback', {
+          prevPhotosCount: prev.length,
+          prevPhotos: prev.map((p) => ({ id: p.id, type: p.type, hasUri: !!p.uri, uri: p.uri?.substring(0, 50) + '...' })),
+        });
+
+        // Get current avatar
+        const currentAvatarPhoto = prev.find((photo) => photo.type === 'avatar');
+        let nextAvatar = currentAvatarPhoto?.uri || null;
+
+        // Collect ALL existing gallery URLs (this should have all previous uploads)
+        const existingGalleryUrls = prev
+          .filter((photo) => photo.type === 'gallery' && photo.uri)
+          .map((photo) => photo.uri);
+
         if (item.type === 'avatar') {
+          // Replace avatar, keep all existing gallery photos
           nextAvatar = url;
+          const newSlots = buildPhotoSlots(nextAvatar, existingGalleryUrls);
+          logger.info('Photos updated after avatar upload', {
+            nextAvatar,
+            galleryCount: existingGalleryUrls.length,
+            totalSlots: newSlots.length,
+            galleryUrls: existingGalleryUrls,
+          });
+          return newSlots;
+        }
+        
+        // For gallery uploads: add new URL to existing ones
+        logger.info('Before collecting gallery URLs', {
+          existingUrls: existingGalleryUrls,
+          count: existingGalleryUrls.length,
+        });
+
+        // Add the new gallery photo URL (avoid duplicates)
+        const allGalleryUrls = [...existingGalleryUrls];
+        if (!allGalleryUrls.includes(url)) {
+          allGalleryUrls.push(url);
         }
 
-        const nextGallery = galleryPhotos.map((photo) => photo.uri);
-        if (item.type === 'gallery') {
-          nextGallery.push(url);
-        }
+        logger.info('Collected existing gallery URLs', {
+          existingUrls: existingGalleryUrls,
+          newUrl: url,
+          allUrls: allGalleryUrls,
+          count: allGalleryUrls.length,
+        });
 
-        return buildPhotoSlots(nextAvatar, Array.from(new Set(nextGallery)));
+        // Rebuild all photo slots with the complete gallery
+        const newSlots = buildPhotoSlots(nextAvatar, allGalleryUrls);
+        logger.info('Photos updated after gallery upload', {
+          nextAvatar,
+          newUrl: url,
+          galleryCount: allGalleryUrls.length,
+          totalSlots: newSlots.length,
+          galleryUrls: allGalleryUrls,
+          newSlotsPreview: newSlots.map((slot) => ({ id: slot.id, hasUri: !!slot.uri, type: slot.type })),
+        });
+        
+        return newSlots;
       });
     } catch (error) {
       logger.error('Profile image upload error', {
         error: error?.message || String(error),
         stack: error?.stack,
       });
-      Alert.alert('Upload Failed', 'We couldn’t upload that photo. Please try again.');
+      Alert.alert('Upload Failed', 'We could not upload that photo. Please try again.');
     }
   };
 
@@ -368,9 +468,9 @@ export default function UserProfileScreen() {
       );
 
       const updates = {
-        display_name: displayName || null,
+        display_name: displayName && displayName.length <= MAX_NAME_LENGTH ? displayName : (displayName ? displayName.slice(0, MAX_NAME_LENGTH) : null),
         age: age ? Number(age) : null,
-        bio: bio || null,
+        bio: bio && bio.length <= MAX_BIO_LENGTH ? bio : (bio ? bio.slice(0, MAX_BIO_LENGTH) : null),
         location: location ? formatLocation(location) : null,
         avatar_url: avatarPhoto?.uri || null,
         gallery_urls: galleryUris,
@@ -583,16 +683,26 @@ export default function UserProfileScreen() {
 
           <View style={styles.bioRow}>
             {isEditingBio ? (
-              <TextInput
-                style={[styles.bioInput, { flex: 1 }]}
-                value={bio}
-                onChangeText={setBio}
-                multiline
-                placeholder="Add a short bio to share your vibe."
-                placeholderTextColor="#9CB8CC"
-                autoFocus
-                onBlur={() => setIsEditingBio(false)}
-              />
+              <View style={{ flex: 1 }}>
+                <TextInput
+                  style={[styles.bioInput, { flex: 1 }]}
+                  value={bio}
+                  onChangeText={(value) => {
+                    if (value.length <= MAX_BIO_LENGTH) {
+                      setBio(value);
+                    }
+                  }}
+                  multiline
+                  placeholder="Add a short bio to share your vibe."
+                  placeholderTextColor="#9CB8CC"
+                  autoFocus
+                  onBlur={() => setIsEditingBio(false)}
+                  maxLength={MAX_BIO_LENGTH}
+                />
+                <Text style={styles.characterCount}>
+                  {bio.length}/{MAX_BIO_LENGTH}
+                </Text>
+              </View>
             ) : (
               <Text style={styles.bioText}>{bio || 'Add a short bio to share your vibe.'}</Text>
             )}
@@ -987,7 +1097,25 @@ function PhotoBox({ item, drag, isActive, pickImage }) {
             style={styles.photoInner}
           >
             {item.uri ? (
-              <Image source={{ uri: item.uri }} style={styles.photo} resizeMode="cover" />
+              <Image 
+                key={`${item.id}-${item.uri}`} 
+                source={{ uri: item.uri }} 
+                style={styles.photo} 
+                resizeMode="cover"
+                onError={(e) => {
+                  logger.error('Image load error', {
+                    uri: item.uri,
+                    itemId: item.id,
+                    error: e.nativeEvent?.error,
+                  });
+                }}
+                onLoad={() => {
+                  logger.info('Image loaded successfully', {
+                    uri: item.uri?.substring(0, 50) + '...',
+                    itemId: item.id,
+                  });
+                }}
+              />
             ) : (
               <AntDesign name="plus" size={22} color="#5BC0F8" />
             )}
@@ -1052,6 +1180,12 @@ const styles = StyleSheet.create({
   bioEditButton: {
     marginLeft: 12,
     padding: 10,
+  },
+  characterCount: {
+    fontSize: 12,
+    color: '#9CB8CC',
+    marginTop: 6,
+    textAlign: 'right',
   },
   locationRow: {
     marginTop: 12,

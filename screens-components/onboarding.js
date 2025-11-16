@@ -9,6 +9,7 @@ import {
   Animated,
   Easing,
   TouchableWithoutFeedback,
+  TouchableOpacity,
   Keyboard,
   Alert,
   Modal,
@@ -36,6 +37,8 @@ const MIN_DISCOVERY_AGE = 18
 const MAX_DISCOVERY_AGE = 99
 const DEFAULT_PREFERRED_MIN = 21
 const DEFAULT_PREFERRED_MAX = 40
+const MAX_NAME_LENGTH = 50
+const MAX_BIO_LENGTH = 500
 
 const formatLocation = (value = '') =>
   value
@@ -412,8 +415,10 @@ export default function Onboarding() {
   }
 
   const handleNameChange = (value) => {
-    setName(value)
-    if (validationError) setValidationError('')
+    if (value.length <= MAX_NAME_LENGTH) {
+      setName(value)
+      if (validationError) setValidationError('')
+    }
   }
 
   const handleAgeChange = (value) => {
@@ -541,8 +546,10 @@ export default function Onboarding() {
   }
 
   const handleBioChange = (value) => {
-    setBio(value)
-    if (validationError) setValidationError('')
+    if (value.length <= MAX_BIO_LENGTH) {
+      setBio(value)
+      if (validationError) setValidationError('')
+    }
   }
 
   const handleCountrySelect = (country) => {
@@ -640,7 +647,11 @@ export default function Onboarding() {
                 style={styles.input}
                 placeholderTextColor="#8EA1B8"
                 autoCapitalize="words"
+                maxLength={MAX_NAME_LENGTH}
               />
+              <Text style={styles.characterCount}>
+                {name.length}/{MAX_NAME_LENGTH}
+              </Text>
             </View>
           )}
 
@@ -695,68 +706,44 @@ export default function Onboarding() {
               <View style={styles.preferenceAgeRow}>
                 <View style={styles.preferenceAgeField}>
                   <Text style={styles.preferenceAgeLabel}>Min</Text>
-                  <View style={[
-                    styles.preferenceAgeInputContainer,
-                    validationError &&
-                      validationError.toLowerCase().includes('min') &&
-                      styles.preferenceAgeInputInvalid,
-                  ]}>
-                    <TextInput
-                      value={preferredMinAge}
-                      onChangeText={handlePreferredMinAgeChange}
-                      onBlur={handlePreferredMinAgeEndEditing}
-                      keyboardType="number-pad"
-                      style={styles.preferenceAgeInputInner}
-                      maxLength={2}
-                      placeholder={String(DEFAULT_PREFERRED_MIN)}
-                      placeholderTextColor="#8EA1B8"
-                      selectionColor="#063970"
-                      underlineColorAndroid="transparent"
-                      spellCheck={false}
-                      autoCorrect={false}
-                      autoComplete="off"
-                      textContentType="none"
-                      autoCapitalize="none"
-                      importantForAutofill="no"
-                      textAlign="center"
-                      keyboardAppearance="light"
-                      returnKeyType="done"
-                      blurOnSubmit={true}
-                    />
-                  </View>
+                  <TouchableOpacity
+                    onPress={() => openAgePicker('min')}
+                    activeOpacity={0.7}
+                    style={[
+                      styles.preferenceAgeInputContainer,
+                      validationError &&
+                        validationError.toLowerCase().includes('min') &&
+                        styles.preferenceAgeInputInvalid,
+                    ]}
+                  >
+                    <Text style={[
+                      styles.preferenceAgeInputText,
+                      !preferredMinAge && styles.preferenceAgeInputPlaceholder
+                    ]}>
+                      {preferredMinAge || String(DEFAULT_PREFERRED_MIN)}
+                    </Text>
+                  </TouchableOpacity>
                 </View>
                 <Text style={styles.preferenceAgeSeparator}>to</Text>
                 <View style={styles.preferenceAgeField}>
                   <Text style={styles.preferenceAgeLabel}>Max</Text>
-                  <View style={[
-                    styles.preferenceAgeInputContainer,
-                    validationError &&
-                      validationError.toLowerCase().includes('max') &&
-                      styles.preferenceAgeInputInvalid,
-                  ]}>
-                    <TextInput
-                      value={preferredMaxAge}
-                      onChangeText={handlePreferredMaxAgeChange}
-                      onBlur={handlePreferredMaxAgeEndEditing}
-                      keyboardType="number-pad"
-                      style={styles.preferenceAgeInputInner}
-                      maxLength={2}
-                      placeholder={String(DEFAULT_PREFERRED_MAX)}
-                      placeholderTextColor="#8EA1B8"
-                      selectionColor="#063970"
-                      underlineColorAndroid="transparent"
-                      spellCheck={false}
-                      autoCorrect={false}
-                      autoComplete="off"
-                      textContentType="none"
-                      autoCapitalize="none"
-                      importantForAutofill="no"
-                      textAlign="center"
-                      keyboardAppearance="light"
-                      returnKeyType="done"
-                      blurOnSubmit={true}
-                    />
-                  </View>
+                  <TouchableOpacity
+                    onPress={() => openAgePicker('max')}
+                    activeOpacity={0.7}
+                    style={[
+                      styles.preferenceAgeInputContainer,
+                      validationError &&
+                        validationError.toLowerCase().includes('max') &&
+                        styles.preferenceAgeInputInvalid,
+                    ]}
+                  >
+                    <Text style={[
+                      styles.preferenceAgeInputText,
+                      !preferredMaxAge && styles.preferenceAgeInputPlaceholder
+                    ]}>
+                      {preferredMaxAge || String(DEFAULT_PREFERRED_MAX)}
+                    </Text>
+                  </TouchableOpacity>
                 </View>
               </View>
               <Text style={styles.preferenceHint}>We'll use this to tailor your discovery filters.</Text>
@@ -850,7 +837,11 @@ export default function Onboarding() {
                 numberOfLines={3}
                 style={[styles.input, styles.bioInput]}
                 placeholderTextColor="#8EA1B8"
+                maxLength={MAX_BIO_LENGTH}
               />
+              <Text style={styles.characterCount}>
+                {bio.length}/{MAX_BIO_LENGTH}
+              </Text>
               <View style={styles.locationSelectors}>
                 <Pressable
                   style={[styles.locationSelector, !selectedCountry && styles.locationSelectorEmpty]}
@@ -1187,6 +1178,13 @@ const styles = StyleSheet.create({
     textAlignVertical: 'top',
     minHeight: 90,
     marginTop: 8,
+  },
+  characterCount: {
+    fontSize: 12,
+    color: '#8EA1B8',
+    marginTop: 6,
+    textAlign: 'right',
+    width: '80%',
   },
   locationSelectors: {
     width: '80%',
@@ -1539,8 +1537,21 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#CBD5E1',
     backgroundColor: '#F8FBFF',
+    paddingVertical: 10,
+    paddingHorizontal: 12,
     minHeight: 40,
-    overflow: 'hidden',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  preferenceAgeInputText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#063970',
+    textAlign: 'center',
+  },
+  preferenceAgeInputPlaceholder: {
+    color: '#8EA1B8',
+    fontWeight: '400',
   },
   preferenceAgeInputInner: {
     flex: 1,

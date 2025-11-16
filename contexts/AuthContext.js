@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { authService } from '../services/authService';
 import { profileService } from '../services/profileService';
+import { getNotificationProcessor } from '../services/notificationProcessor';
 import { logger } from '../utils/logger';
 
 const AuthContext = createContext(null);
@@ -32,6 +33,13 @@ export function AuthProvider({ children }) {
               userId: initialSession.user.id,
             });
           });
+          // Start notification processor for authenticated user
+          const processor = getNotificationProcessor();
+          processor.start();
+          // Process any pending notifications
+          processor.processPendingNotifications().catch((err) => {
+            logger.warn('Failed to process pending notifications on init', { error: err.message });
+          });
         }
       })
       .catch((error) => {
@@ -53,9 +61,19 @@ export function AuthProvider({ children }) {
           if (session?.user) {
             setLastAuthAction('signin');
             await loadProfile(session.user.id);
+            // Start notification processor
+            const processor = getNotificationProcessor();
+            processor.start();
+            // Process any pending notifications
+            processor.processPendingNotifications().catch((err) => {
+              logger.warn('Failed to process pending notifications', { error: err.message });
+            });
           } else {
             setLastAuthAction(null);
             setProfile(null);
+            // Stop notification processor
+            const processor = getNotificationProcessor();
+            processor.stop();
           }
         } catch (error) {
           logger.error('Error in auth state change handler', {
@@ -69,6 +87,9 @@ export function AuthProvider({ children }) {
       return () => {
         try {
           subscription?.unsubscribe();
+          // Stop notification processor on unmount
+          const processor = getNotificationProcessor();
+          processor.stop();
         } catch (error) {
           logger.error('Error unsubscribing from auth state', {
             error: error?.message || String(error),

@@ -6,14 +6,18 @@ const LEVELS = {
   DEBUG: 'DEBUG',
 };
 
+// Check if we're in development mode
+const isDevelopment = typeof __DEV__ !== 'undefined' && __DEV__;
+
 const globalObject = typeof globalThis !== 'undefined' ? globalThis : (typeof self !== 'undefined' ? self : undefined);
 
 class Logger {
   constructor() {
     this.logs = [];
-    this.maxLogs = 200;
+    this.maxLogs = isDevelopment ? 200 : 50; // Store fewer logs in production
     this.originalConsole = {};
     this.initialized = false;
+    this.isDevelopment = isDevelopment;
   }
 
   initialize() {
@@ -28,40 +32,56 @@ class Logger {
 
     const logger = this;
 
+    // Always capture errors, even in production
     if (typeof console.error === 'function') {
       console.error = function(...args) {
         logger.recordConsole(LEVELS.ERROR, args);
-        if (logger.originalConsole.error) {
+        // Only output to console in development
+        if (logger.isDevelopment && logger.originalConsole.error) {
           logger.originalConsole.error(...args);
         }
       };
     }
 
-    if (typeof console.warn === 'function') {
-      console.warn = function(...args) {
-        logger.recordConsole(LEVELS.WARN, args);
-        if (logger.originalConsole.warn) {
-          logger.originalConsole.warn(...args);
-        }
-      };
-    }
+    // Only intercept and log warnings/info/debug in development
+    if (this.isDevelopment) {
+      if (typeof console.warn === 'function') {
+        console.warn = function(...args) {
+          logger.recordConsole(LEVELS.WARN, args);
+          if (logger.originalConsole.warn) {
+            logger.originalConsole.warn(...args);
+          }
+        };
+      }
 
-    if (typeof console.info === 'function') {
-      console.info = function(...args) {
-        logger.recordConsole(LEVELS.INFO, args);
-        if (logger.originalConsole.info) {
-          logger.originalConsole.info(...args);
-        }
-      };
-    }
+      if (typeof console.info === 'function') {
+        console.info = function(...args) {
+          logger.recordConsole(LEVELS.INFO, args);
+          if (logger.originalConsole.info) {
+            logger.originalConsole.info(...args);
+          }
+        };
+      }
 
-    if (typeof console.log === 'function') {
-      console.log = function(...args) {
-        logger.recordConsole(LEVELS.DEBUG, args);
-        if (logger.originalConsole.log) {
-          logger.originalConsole.log(...args);
-        }
-      };
+      if (typeof console.log === 'function') {
+        console.log = function(...args) {
+          logger.recordConsole(LEVELS.DEBUG, args);
+          if (logger.originalConsole.log) {
+            logger.originalConsole.log(...args);
+          }
+        };
+      }
+    } else {
+      // In production, silence console.log, console.info, and console.warn
+      if (typeof console.log === 'function') {
+        console.log = function() {}; // No-op in production
+      }
+      if (typeof console.info === 'function') {
+        console.info = function() {}; // No-op in production
+      }
+      if (typeof console.warn === 'function') {
+        console.warn = function() {}; // No-op in production
+      }
     }
 
     this.initialized = true;
@@ -106,12 +126,19 @@ class Logger {
       message: typeof message === 'string' ? message : this.stringify(message),
       data: data ?? null,
     };
-    this.pushLog(entry);
+    
+    // Only store logs in development, or if it's an error
+    if (this.isDevelopment || level === LEVELS.ERROR) {
+      this.pushLog(entry);
+    }
 
-    const method = level === LEVELS.ERROR ? 'error' : level === LEVELS.WARN ? 'warn' : 'log';
-    const original = this.originalConsole[method];
-    if (original) {
-      original(`[${level}] ${entry.message}`, data || '');
+    // Only output to console in development
+    if (this.isDevelopment) {
+      const method = level === LEVELS.ERROR ? 'error' : level === LEVELS.WARN ? 'warn' : 'log';
+      const original = this.originalConsole[method];
+      if (original) {
+        original(`[${level}] ${entry.message}`, data || '');
+      }
     }
   }
 
@@ -124,11 +151,17 @@ class Logger {
   }
 
   info(message, data) {
-    this.log(LEVELS.INFO, message, data);
+    // Only log info messages in development
+    if (this.isDevelopment) {
+      this.log(LEVELS.INFO, message, data);
+    }
   }
 
   debug(message, data) {
-    this.log(LEVELS.DEBUG, message, data);
+    // Only log debug messages in development
+    if (this.isDevelopment) {
+      this.log(LEVELS.DEBUG, message, data);
+    }
   }
 
   getLogs() {

@@ -13,7 +13,9 @@ class ErrorBoundary extends React.Component {
   }
 
   componentDidCatch(error, errorInfo) {
-    // Log to logger first
+    const isDevelopment = typeof __DEV__ !== 'undefined' && __DEV__;
+    
+    // Always log errors to logger (even in production)
     try {
       logger.error('ErrorBoundary caught React error', {
         error: error?.toString() || 'Unknown error',
@@ -24,24 +26,26 @@ class ErrorBoundary extends React.Component {
         errorInfo: errorInfo,
       });
     } catch (e) {
-      // If logger fails, still log to console
-      console.error('Failed to log to logger:', e);
+      // If logger fails, only log to console in development
+      if (isDevelopment) {
+        console.error('Failed to log to logger:', e);
+      }
     }
 
-    console.error('ErrorBoundary caught an error:', error, errorInfo);
-    this.setState({
-      error,
-      errorInfo,
-    });
-    
-    // Log to a more visible place
-    if (typeof __DEV__ !== 'undefined' && __DEV__) {
+    // Only log to console in development
+    if (isDevelopment) {
+      console.error('ErrorBoundary caught an error:', error, errorInfo);
       console.log('=== ERROR DETAILS ===');
       console.log('Error:', error);
       console.log('Error Stack:', error.stack);
       console.log('Component Stack:', errorInfo.componentStack);
       console.log('===================');
     }
+    
+    this.setState({
+      error,
+      errorInfo,
+    });
   }
 
   handleReset = () => {
@@ -50,6 +54,8 @@ class ErrorBoundary extends React.Component {
 
   render() {
     if (this.state.hasError) {
+      const isDevelopment = typeof __DEV__ !== 'undefined' && __DEV__;
+      
       return (
         <View style={styles.container}>
           <ScrollView style={styles.scrollView} contentContainerStyle={styles.content}>
@@ -61,7 +67,8 @@ class ErrorBoundary extends React.Component {
               <Text style={styles.errorText}>{this.state.error?.toString() || 'Unknown error'}</Text>
             </View>
 
-            {this.state.error?.stack && (
+            {/* Only show stack traces in development */}
+            {isDevelopment && this.state.error?.stack && (
               <View style={styles.errorBox}>
                 <Text style={styles.errorLabel}>Stack Trace:</Text>
                 <ScrollView style={styles.stackScroll}>
@@ -70,7 +77,7 @@ class ErrorBoundary extends React.Component {
               </View>
             )}
 
-            {this.state.errorInfo?.componentStack && (
+            {isDevelopment && this.state.errorInfo?.componentStack && (
               <View style={styles.errorBox}>
                 <Text style={styles.errorLabel}>Component Stack:</Text>
                 <ScrollView style={styles.stackScroll}>

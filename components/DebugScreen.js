@@ -5,6 +5,17 @@ import { logger } from '../utils/logger';
 import { exportLogsToFile, printErrorsToConsole, getLogsSummary, formatErrorsForCopy } from '../utils/exportLogs';
 
 export default function DebugScreen() {
+  // Only render in development
+  if (typeof __DEV__ === 'undefined' || !__DEV__) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 }}>
+        <Text style={{ fontSize: 18, color: '#666', textAlign: 'center' }}>
+          Debug screen is only available in development mode.
+        </Text>
+      </View>
+    );
+  }
+
   const [logs, setLogs] = useState([]);
   const [filter, setFilter] = useState('');
   const [showErrorsOnly, setShowErrorsOnly] = useState(false);

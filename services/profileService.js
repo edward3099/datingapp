@@ -177,8 +177,22 @@ export const profileService = {
       });
 
       let profileIds = [];
+      let scoreMap = new Map(); // Store scores for ordering
+      
       if (!rpcError && rpcData && rpcData.length > 0) {
         profileIds = rpcData.map((r) => r.profile_id || r.id || r);
+        // Store scores for each profile to maintain algorithm ranking
+        rpcData.forEach((r) => {
+          if (r.profile_id) {
+            scoreMap.set(r.profile_id, {
+              match_score: r.match_score || 0,
+              match_probability: r.match_probability || 0,
+              engagement_boost: r.engagement_boost || 1,
+              novelty_score: r.novelty_score || 0,
+              popularity_score: r.popularity_score || 0,
+            });
+          }
+        });
       } else {
         // Fallback: Get all profiles except current user
         const { data: allProfiles } = await supabase
@@ -244,7 +258,19 @@ export const profileService = {
 
       const deduped = Array.from(new Map(sanitized.map((profile) => [profile.id, profile])).values());
 
-      return { profiles: deduped, error: null };
+      // Preserve algorithm ranking order and attach scores
+      const orderedProfiles = profileIds
+        .map((id) => deduped.find((p) => p.id === id))
+        .filter(Boolean)
+        .map((profile) => {
+          const scores = scoreMap.get(profile.id);
+          return {
+            ...profile,
+            algorithm_scores: scores || null,
+          };
+        });
+
+      return { profiles: orderedProfiles, error: null };
     } catch (error) {
       logger.error('Get recommendations error', {
         error: error?.message || String(error),
@@ -396,11 +422,28 @@ export const profileService = {
 
       if (error) throw error;
 
-      // Get public URL
+      // Try to get public URL first (for public buckets)
       const { data: urlData } = supabase.storage.from(bucket).getPublicUrl(data.path);
+      
+      // For private buckets, we need signed URLs. Try public first, but if bucket is private,
+      // we'll need to use createSignedUrl. However, signed URLs expire, so for gallery images
+      // that should persist, the bucket should be public.
+      // For now, use public URL - if bucket is private, we'll need to make it public in Supabase dashboard
+      const imageUrl = urlData.publicUrl;
+      
+      // Verify the URL is accessible (quick check)
+      // Note: This is async but we don't wait - just log if there's an issue
+      fetch(imageUrl, { method: 'HEAD' }).catch((fetchError) => {
+        logger.warn('Public URL might not be accessible', {
+          url: imageUrl,
+          bucket,
+          path: data.path,
+          error: fetchError?.message,
+        });
+      });
 
-      logger.info('Image uploaded', { bucket, fileName, userId });
-      return { url: urlData.publicUrl, path: data.path, error: null };
+      logger.info('Image uploaded', { bucket, fileName, userId, url: imageUrl });
+      return { url: imageUrl, path: data.path, error: null };
     } catch (error) {
       logger.error('Upload image error', {
         error: error?.message || String(error),

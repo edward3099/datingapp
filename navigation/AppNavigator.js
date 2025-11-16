@@ -52,11 +52,13 @@ function AppNavigatorContent() {
           <Stack.Screen name="Messages" component={MessagesScreen} />
         </>
       )}
-      <Stack.Screen 
-        name="Debug" 
-        component={DebugScreen}
-        options={{ headerShown: true, title: 'Debug Console' }}
-      />
+      {typeof __DEV__ !== 'undefined' && __DEV__ && (
+        <Stack.Screen 
+          name="Debug" 
+          component={DebugScreen}
+          options={{ headerShown: true, title: 'Debug Console' }}
+        />
+      )}
     </Stack.Navigator>
   );
 }

@@ -4,6 +4,11 @@ import { useNavigation } from '@react-navigation/native';
 import { logger } from '../utils/logger';
 
 export default function DevMenu() {
+  // Only render in development
+  if (typeof __DEV__ === 'undefined' || !__DEV__) {
+    return null;
+  }
+
   const [visible, setVisible] = useState(false);
   const navigation = useNavigation(); // Must be called unconditionally
 

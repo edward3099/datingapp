@@ -186,20 +186,9 @@ export const messageService = {
 
       logger.info('Message sent', { conversationId: normalizedConversationId, messageId: data.id });
 
-      // Trigger push notification via Edge Function
-      try {
-        await supabase.functions.invoke('send-push-notification', {
-          body: {
-            user_id: user.id,
-            title: 'New message',
-            body: content,
-            data: { conversation_id: conversationId, message_id: data.id },
-          },
-        });
-      } catch (notifError) {
-        // Non-critical, just log
-        logger.warn('Push notification error', { error: notifError.message });
-      }
+      // Note: Push notifications are automatically sent via database trigger (notify_new_message)
+      // The trigger creates a notification record and handles sending to the recipient
+      // No need to manually call push notification here
 
       return { message: data, error: null };
     } catch (error) {
