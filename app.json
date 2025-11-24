@@ -1,0 +1,43 @@
+{
+  "expo": {
+    "name": "Expo Go App",
+    "slug": "expo-go-app",
+    "version": "1.0.0",
+    "sdkVersion": "54.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff"
+    },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.expo.goapp"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#ffffff"
+      },
+      "package": "com.expo.goapp"
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-font",
+      "./plugins/with-disable-predictive-text"
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "52113438-ce0d-4142-ba3b-61a15038168d"
+      }
+    },
+    "owner": "iatsj"
+  }
+}

@@ -1,0 +1,477 @@
+import React, { useRef, useEffect, useState, useMemo } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  Animated,
+  Dimensions,
+  TextInput,
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+  TouchableWithoutFeedback,
+  Alert,
+} from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
+import { useNavigation } from '@react-navigation/native';
+import { useAuth } from '../contexts/AuthContext';
+import { authService } from '../services/authService';
+import { logger } from '../utils/logger';
+
+const { width, height } = Dimensions.get('window');
+
+/* ---------- Sparkles ---------- */
+function SparkleDot({ cfg }) {
+  const ty = useRef(new Animated.Value(0)).current;
+  const op = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.delay(cfg.delay),
+        Animated.parallel([
+          Animated.timing(op, { toValue: 1, duration: 500, useNativeDriver: false }),
+          Animated.timing(ty, { toValue: -cfg.rise, duration: cfg.duration, useNativeDriver: false }),
+        ]),
+        Animated.parallel([
+          Animated.timing(op, { toValue: 0, duration: 600, useNativeDriver: false }),
+          Animated.timing(ty, { toValue: 0, duration: 0, useNativeDriver: false }),
+        ]),
+      ])
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [cfg]);
+
+  return (
+    <Animated.View
+      pointerEvents="none"
+      style={{
+        position: 'absolute',
+        bottom: cfg.baseY,
+        left: cfg.left,
+        width: cfg.size,
+        height: cfg.size,
+        borderRadius: cfg.size / 2,
+        backgroundColor: 'rgba(255,255,255,0.95)',
+        opacity: op,
+        transform: [{ translateY: ty }],
+        shadowColor: '#FFFFFF',
+        shadowOpacity: 0.6,
+        shadowRadius: 2,
+        shadowOffset: { width: 0, height: 0 },
+      }}
+    />
+  );
+}
+
+function Sparkles({ count = 48 }) {
+  const configs = useMemo(
+    () =>
+      Array.from({ length: count }).map(() => ({
+        left: Math.random() * width,
+        baseY: height * 0.35 + Math.random() * height * 0.5,
+        size: 1 + Math.random() * 2.5,
+        delay: Math.random() * 2500,
+        duration: 2200 + Math.random() * 2200,
+        rise: height * (0.18 + Math.random() * 0.28),
+      })),
+    []
+  );
+  return (
+    <View style={StyleSheet.absoluteFill} pointerEvents="none">
+      {configs.map((c, i) => (
+        <SparkleDot key={`sp-${i}`} cfg={c} />
+      ))}
+    </View>
+  );
+}
+
+/* ---------- Auth Screen ---------- */
+export default function LoginSignUp() {
+  const navigation = useNavigation();
+  const { signIn, signUp, loading: authLoading, isAuthenticated, onboardingComplete, lastAuthAction } = useAuth();
+  const [mode, setMode] = useState('signin');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [retype, setRetype] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+
+  const fadeIn = useRef(new Animated.Value(0)).current;
+  const panelLift = useRef(new Animated.Value(20)).current;
+  const panelScale = useRef(new Animated.Value(0.98)).current;
+  const btnScale = useRef(new Animated.Value(1)).current;
+  const [btnPressed, setBtnPressed] = useState(false);
+
+  const passErrorGlow = useRef(new Animated.Value(0)).current;
+  const retypeErrorGlow = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.parallel([
+      Animated.timing(fadeIn, { toValue: 1, duration: 600, useNativeDriver: false }),
+      Animated.spring(panelLift, { toValue: 0, useNativeDriver: false }),
+      Animated.spring(panelScale, { toValue: 1, friction: 6, tension: 90, useNativeDriver: false }),
+    ]).start();
+  }, []);
+
+  // Use state-based color instead of animated to avoid native/JS driver conflicts
+  const bgBtnColor = btnPressed ? '#FF4C4C' : '#007AFF';
+
+  // Use static shadow opacity to avoid native/JS driver conflicts
+  const glowOpacity = 0.2;
+
+  const passBorderColor = passErrorGlow.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['rgba(255,255,255,0.65)', '#FF4C4C'],
+  });
+
+  const retypeBorderColor = retypeErrorGlow.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['rgba(255,255,255,0.65)', '#FF4C4C'],
+  });
+
+  useEffect(() => {
+    if (!isAuthenticated) {
+      return;
+    }
+
+    if (lastAuthAction === 'signup' || mode === 'signup') {
+      navigation.reset({ index: 0, routes: [{ name: 'Onboarding' }] });
+      return;
+    }
+
+    if (onboardingComplete) {
+      navigation.reset({ index: 0, routes: [{ name: 'SwipeScreen' }] });
+    } else {
+      navigation.reset({ index: 0, routes: [{ name: 'Onboarding' }] });
+    }
+  }, [isAuthenticated, onboardingComplete, lastAuthAction, mode, navigation]);
+
+  const flashError = () => {
+    // Stop any existing animations first
+    passErrorGlow.stopAnimation();
+    retypeErrorGlow.stopAnimation();
+    
+    // Reset values
+    passErrorGlow.setValue(0);
+    retypeErrorGlow.setValue(0);
+    
+    Animated.parallel([
+      Animated.sequence([
+        Animated.timing(passErrorGlow, { toValue: 1, duration: 200, useNativeDriver: false }),
+        Animated.timing(passErrorGlow, { toValue: 0, duration: 400, useNativeDriver: false }),
+      ]),
+      Animated.sequence([
+        Animated.timing(retypeErrorGlow, { toValue: 1, duration: 200, useNativeDriver: false }),
+        Animated.timing(retypeErrorGlow, { toValue: 0, duration: 400, useNativeDriver: false }),
+      ]),
+    ]).start();
+  };
+
+  const onContinue = async () => {
+    try {
+      if (mode === 'signup' && password !== retype) {
+        flashError();
+        logger.warn('Password mismatch', { mode, passwordLength: password.length });
+        return;
+      }
+
+      if (!email || !password) {
+        Alert.alert('Missing Information', 'Please enter your email and password');
+        return;
+      }
+
+      if (password.length < 6) {
+        Alert.alert('Invalid Password', 'Password must be at least 6 characters');
+        return;
+      }
+
+      setIsLoading(true);
+      btnScale.stopAnimation();
+
+      // Start animation with native driver only
+      Animated.sequence([
+        Animated.spring(btnScale, { toValue: 0.95, useNativeDriver: false }),
+        Animated.spring(btnScale, { toValue: 1, friction: 4, tension: 120, useNativeDriver: false }),
+      ]).start();
+
+      // Authenticate
+      let result;
+      if (mode === 'signin') {
+        result = await signIn(email, password);
+      } else {
+        result = await signUp(email, password);
+      }
+
+      setIsLoading(false);
+
+      if (result.error) {
+        // Handle specific error cases
+        if (result.error.code === 'email_not_confirmed' || result.error.needsConfirmation) {
+          Alert.alert(
+            'Email Confirmation Required',
+            mode === 'signup' 
+              ? 'Please check your email and click the confirmation link to activate your account. You can sign in after confirming your email.'
+              : 'Please check your email and click the confirmation link before signing in. If you didn\'t receive the email, we can resend it.',
+            [
+              { text: 'OK', style: 'cancel' },
+              { 
+                text: 'Resend Email', 
+                onPress: async () => {
+                  setIsLoading(true);
+                  try {
+                    const { error: resendError } = await authService.resendConfirmationEmail(email);
+                    setIsLoading(false);
+                    if (resendError) {
+                      Alert.alert('Error', 'Failed to resend confirmation email: ' + resendError.message);
+                    } else {
+                      Alert.alert('✅ Email Sent', 'Please check your inbox (and spam folder) for the confirmation email.');
+                    }
+                  } catch (e) {
+                    setIsLoading(false);
+                    Alert.alert('Error', 'Failed to resend confirmation email.');
+                  }
+                }
+              }
+            ]
+          );
+        } else if (result.error.code === 'invalid_credentials' || result.error.message?.includes('Invalid login')) {
+          Alert.alert(
+            'Invalid Credentials',
+            'The email or password you entered is incorrect. Please try again.'
+          );
+        } else if (result.error.code === 'user_not_found') {
+          Alert.alert(
+            'Account Not Found',
+            'No account found with this email address. Please sign up first.'
+          );
+        } else {
+          Alert.alert(
+            mode === 'signin' ? 'Sign In Failed' : 'Sign Up Failed',
+            result.error.message || 'An error occurred. Please try again.'
+          );
+        }
+        const logMethod =
+          result.error.code === 'invalid_credentials' || result.error.message?.includes('Invalid login')
+            ? logger.warn
+            : logger.error;
+        logMethod?.call(logger, 'Auth error', {
+          error: result.error.message,
+          mode,
+          code: result.error.code,
+        });
+        return;
+      }
+
+      // Navigate after successful auth
+      logger.info('Auth successful', { mode, userId: result.user?.id });
+      if (mode !== 'signin') {
+        navigation.replace('Onboarding');
+      }
+    } catch (error) {
+      setIsLoading(false);
+      if (error?.code === 'invalid_credentials' || error?.message?.includes?.('Invalid login')) {
+        logger.warn?.('onContinue invalid credentials', { mode, error: error?.message });
+        Alert.alert('Invalid Credentials', 'The email or password you entered is incorrect. Please try again.');
+      } else {
+        logger.error('onContinue error', { error: error.toString(), stack: error.stack, mode });
+        Alert.alert('Error', 'An unexpected error occurred. Please try again.');
+      }
+    }
+  };
+
+  const toggleMode = () => setMode((m) => (m === 'signin' ? 'signup' : 'signin'));
+
+  return (
+    <LinearGradient
+      colors={['#B8E9FF', '#E8F6FF']}
+      start={{ x: 0, y: 0 }}
+      end={{ x: 1, y: 1 }}
+      style={styles.container}
+    >
+      <Animated.View pointerEvents="none" style={styles.depthFog} />
+      <Animated.View pointerEvents="none" style={styles.depthFog2} />
+      <Sparkles count={54} />
+
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1, width: '100%' }}>
+        <View style={styles.safePad} />
+
+        <View style={styles.headerWrap}>
+          <Text style={styles.brand}>amour</Text>
+          <Text style={styles.tagline}>{mode === 'signin' ? 'welcome back' : 'create your vibe'}</Text>
+        </View>
+
+        <Animated.View
+          style={[
+            styles.card,
+            { opacity: fadeIn, transform: [{ translateY: panelLift }, { scale: panelScale }] },
+          ]}
+        >
+          <LinearGradient
+            colors={['rgba(255,255,255,0.55)', 'rgba(255,255,255,0.18)']}
+            style={StyleSheet.absoluteFill}
+          />
+          <View style={styles.cardInner}>
+            <Text style={styles.cardTitle}>{mode === 'signin' ? 'sign in' : 'sign up'}</Text>
+
+            <View style={styles.inputWrap}>
+              <Text style={styles.inputLabel}>email</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="you@example.com"
+                placeholderTextColor="#8FB3CC"
+                autoCapitalize="none"
+                keyboardType="email-address"
+                value={email}
+                onChangeText={setEmail}
+              />
+            </View>
+
+            <View style={{ height: 14 }} />
+
+            <Animated.View style={[styles.inputWrap, { borderColor: passBorderColor }]}>
+              <Text style={styles.inputLabel}>password</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="••••••••"
+                placeholderTextColor="#8FB3CC"
+                secureTextEntry
+                value={password}
+                onChangeText={setPassword}
+              />
+            </Animated.View>
+
+            {mode === 'signup' && (
+              <>
+                <View style={{ height: 14 }} />
+                <Animated.View style={[styles.inputWrap, { borderColor: retypeBorderColor }]}>
+                  <Text style={styles.inputLabel}>retype password</Text>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="••••••••"
+                    placeholderTextColor="#8FB3CC"
+                    secureTextEntry
+                    value={retype}
+                    onChangeText={setRetype}
+                  />
+                </Animated.View>
+              </>
+            )}
+
+            <View style={{ height: 22 }} />
+
+            <TouchableWithoutFeedback
+              onPressIn={() => {
+                // Stop all animations first
+                btnScale.stopAnimation();
+                
+                // Use state for color change to avoid native/JS driver conflicts
+                setBtnPressed(true);
+                
+                // Start native driver animation
+                Animated.spring(btnScale, { toValue: 0.96, useNativeDriver: false }).start();
+              }}
+              onPressOut={() => {
+                // Stop all animations first
+                btnScale.stopAnimation();
+                
+                // Reset color state
+                setBtnPressed(false);
+                
+                // Start native driver animation
+                Animated.spring(btnScale, { toValue: 1, friction: 5, tension: 120, useNativeDriver: false }).start();
+                
+                onContinue();
+              }}
+            >
+              <Animated.View
+                style={[
+                  styles.cta,
+                  {
+                    transform: [{ scale: btnScale }],
+                    backgroundColor: bgBtnColor,
+                    shadowOpacity: glowOpacity,
+                    opacity: isLoading || authLoading ? 0.6 : 1,
+                  },
+                ]}
+              >
+                <Text style={styles.ctaText}>
+                  {isLoading || authLoading ? 'loading...' : 'continue'}
+                </Text>
+              </Animated.View>
+            </TouchableWithoutFeedback>
+
+            <View style={styles.toggleRow}>
+              <Text style={styles.toggleText}>
+                {mode === 'signin' ? "don't have an account?" : 'already have an account?'}
+              </Text>
+              <Pressable onPress={toggleMode} hitSlop={10}>
+                <Text style={styles.toggleLink}>{mode === 'signin' ? 'sign up' : 'sign in'}</Text>
+              </Pressable>
+            </View>
+          </View>
+        </Animated.View>
+        <View style={{ height: 36 }} />
+      </KeyboardAvoidingView>
+    </LinearGradient>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: { flex: 1 },
+  safePad: { height: 64 },
+  headerWrap: { alignItems: 'center', marginBottom: 12 },
+  brand: { fontSize: 42, fontWeight: '800', color: '#063970', textTransform: 'lowercase' },
+  tagline: { marginTop: 6, color: '#345E7A', fontSize: 14, fontWeight: '600' },
+  depthFog: {
+    position: 'absolute',
+    width: width * 1.4,
+    height: height * 0.8,
+    top: height * 0.18,
+    backgroundColor: '#89CFF0',
+    opacity: 0.16,
+    borderRadius: 900,
+  },
+  depthFog2: {
+    position: 'absolute',
+    width: width * 1.2,
+    height: height * 0.9,
+    top: height * 0.08,
+    backgroundColor: '#C2ECFF',
+    opacity: 0.12,
+    borderRadius: 900,
+  },
+  card: {
+    marginHorizontal: 18,
+    borderRadius: 28,
+    overflow: 'hidden',
+    shadowColor: '#5BC0F8',
+    shadowOpacity: 0.35,
+    shadowRadius: 24,
+    shadowOffset: { width: 0, height: 10 },
+  },
+  cardInner: { paddingHorizontal: 18, paddingTop: 18, paddingBottom: 18 },
+  cardTitle: { fontSize: 18, fontWeight: '800', color: '#0A4570', marginBottom: 14, textTransform: 'lowercase' },
+  inputWrap: {
+    backgroundColor: 'rgba(255,255,255,0.45)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.65)',
+    borderRadius: 16,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  inputLabel: { fontSize: 12, color: '#467A99', fontWeight: '700', marginBottom: 6, textTransform: 'lowercase' },
+  input: { fontSize: 16, color: '#063970', paddingVertical: 6 },
+  cta: {
+    borderRadius: 18,
+    paddingVertical: 14,
+    alignItems: 'center',
+    shadowColor: '#007AFF',
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
+  },
+  ctaText: { color: '#fff', fontSize: 16, fontWeight: '800', textTransform: 'lowercase' },
+  toggleRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', marginTop: 14 },
+  toggleText: { color: '#3E5F78', fontSize: 13, marginRight: 6 },
+  toggleLink: { color: '#007AFF', fontSize: 13, fontWeight: '800' },
+});
